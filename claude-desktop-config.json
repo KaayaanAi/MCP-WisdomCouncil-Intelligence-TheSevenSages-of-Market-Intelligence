@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "mcp-financial-intelligence": {
+      "command": "node",
+      "args": ["/path/to/your/mcp-nextgen-financial-intelligence/build/index.js"],
+      "env": {
+        "OPENAI_API_KEY": "your-openai-api-key-here",
+        "GEMINI_API_KEY": "your-gemini-api-key-here",
+        "HTTP_MODE": "false",
+        "LOG_LEVEL": "info"
+      }
+    }
+  }
+}

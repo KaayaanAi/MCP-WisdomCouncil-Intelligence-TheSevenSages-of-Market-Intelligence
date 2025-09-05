@@ -1,6 +1,6 @@
 {
   "name": "mcp-nextgen-financial-intelligence",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Enterprise-grade MCP server delivering real-time financial intelligence through 7 specialized AI analyst personas with multi-provider support, security hardening, and comprehensive market analysis",
   "type": "module",
   "main": "build/index.js",
@@ -50,13 +50,13 @@
   ],
   "author": "Kaayaan Ai",
   "license": "MIT",
-  "homepage": "https://github.com/your-username/mcp-nextgen-financial-intelligence#readme",
+  "homepage": "https://github.com/kaayaan-ai/mcp-nextgen-financial-intelligence#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/your-username/mcp-nextgen-financial-intelligence.git"
+    "url": "git+https://github.com/kaayaan-ai/mcp-nextgen-financial-intelligence.git"
   },
   "bugs": {
-    "url": "https://github.com/your-username/mcp-nextgen-financial-intelligence/issues"
+    "url": "https://github.com/kaayaan-ai/mcp-nextgen-financial-intelligence/issues"
   },
   "community": {
     "discord": "https://discord.com/channels/1413326280518140014/1413326281487155241",

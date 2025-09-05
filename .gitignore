@@ -113,3 +113,11 @@ temp/
 
 # Mac
 .DS_Store
+
+# Tool directories
+.daddy/
+.qlty/
+
+# Test and development files
+test-suite.md
+daddy_project.md

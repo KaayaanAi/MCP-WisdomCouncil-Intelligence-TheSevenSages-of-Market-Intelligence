@@ -1,5 +1,6 @@
 import { aiProviderManager } from './ai-provider.js';
 import { secureLogger } from '../utils/logger.js';
+import { temporalContextService } from './temporal-context.js';
 import { 
   Analyst, 
   AnalysisResult, 
@@ -19,19 +20,46 @@ abstract class BaseAnalyst implements Analyst {
   ) {}
   
   async analyze(input: string, context?: any): Promise<AnalysisResult> {
-    const prompt = this.buildPrompt(input, context);
+    // Get temporal-aware prompt with current context
+    const temporalPrompt = temporalContextService.generateTemporalPrompt();
+    const fullPrompt = `${temporalPrompt}\n\n${this.buildPrompt(input, context)}`;
     
     try {
-      const result = await aiProviderManager.analyze(prompt);
+      const result = await aiProviderManager.analyze(fullPrompt);
+      
+      // Validate content for temporal consistency and data fabrication
+      const validation = temporalContextService.validateAnalysisContent(result.content, input);
+      
+      // Use corrected content if validation found issues
+      const finalContent = validation.correctedContent || result.content;
+      
+      // Add temporal disclaimer
+      const contentWithDisclaimer = temporalContextService.addTemporalDisclaimer(finalContent);
+      
+      // Log validation results
+      if (validation.flags.length > 0) {
+        secureLogger.warn(`Analyst ${this.name} content validation flags`, {
+          flagCount: validation.flags.length,
+          confidence: validation.confidence,
+          flags: validation.flags.map(f => f.type)
+        });
+      }
       
       // Enhance result with analyst-specific metadata
       return {
         ...result,
+        content: contentWithDisclaimer,
+        confidence: Math.min(result.confidence, validation.confidence),
         analysisType: `${this.name}_analysis`,
         metadata: {
           ...result.metadata,
           analyst: this.name,
-          specialty: this.specialty
+          specialty: this.specialty,
+          temporalValidation: {
+            isValid: validation.isValid,
+            confidence: validation.confidence,
+            flagCount: validation.flags.length
+          }
         }
       };
       
@@ -286,7 +314,7 @@ Include specific sentiment scores and behavioral pattern predictions.`;
  * Analyst Manager - Coordinates all 7 analysts and builds consensus
  */
 export class AnalystManager {
-  private analysts: Map<string, Analyst> = new Map();
+  private readonly analysts: Map<string, Analyst> = new Map();
   
   constructor() {
     this.initializeAnalysts();
@@ -458,8 +486,9 @@ Format as clear, actionable summary under 400 words.`;
   }
   
   private extractReasoning(content: string): string {
-    const reasoningMatch = content.match(/(?:reasoning|rationale|because|due to|analysis shows)[:\s]*([^.!?]*[.!?])/i);
-    return reasoningMatch && reasoningMatch[1] ? reasoningMatch[1].trim() : 'See full analysis for reasoning';
+    const reasoningPattern = /(?:reasoning|rationale|because|due to|analysis shows)[:\s]*([^.!?]*[.!?])/i;
+    const reasoningMatch = reasoningPattern.exec(content);
+    return reasoningMatch?.[1]?.trim() || 'See full analysis for reasoning';
   }
   
   private extractEvidence(content: string): string[] {
@@ -486,16 +515,18 @@ Format as clear, actionable summary under 400 words.`;
   }
   
   private extractRiskLevel(content: string): 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' {
-    const riskMatch = content.match(/risk[:\s]*(?:level[:\s]*)?(low|medium|high|critical)/i);
-    if (riskMatch && riskMatch[1]) {
+    const riskPattern = /risk[:\s]*(?:level[:\s]*)?(low|medium|high|critical)/i;
+    const riskMatch = riskPattern.exec(content);
+    if (riskMatch?.[1]) {
       return riskMatch[1].toUpperCase() as 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
     }
     return 'MEDIUM'; // Default
   }
   
   private extractTimeframe(content: string): string {
-    const timeMatch = content.match(/(?:timeframe|timeline|monitor|watch)[:\s]*([^.!?]*[.!?])/i);
-    return timeMatch && timeMatch[1] ? timeMatch[1].trim() : '24-48 hours';
+    const timePattern = /(?:timeframe|timeline|monitor|watch)[:\s]*([^.!?]*[.!?])/i;
+    const timeMatch = timePattern.exec(content);
+    return timeMatch?.[1]?.trim() || '24-48 hours';
   }
   
   getAvailableAnalysts(): string[] {
