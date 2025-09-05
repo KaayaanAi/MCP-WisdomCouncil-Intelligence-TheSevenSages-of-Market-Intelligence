@@ -175,6 +175,35 @@ export interface GeminiResponse {
   }>;
 }
 
+export interface AnthropicResponse {
+  content: Array<{
+    type: 'text';
+    text: string;
+  }>;
+  id: string;
+  model: string;
+  role: string;
+  stop_reason: string;
+  stop_sequence: null | string;
+  type: string;
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+  };
+}
+
+export interface LocalModelResponse {
+  response: string;
+  done: boolean;
+  context?: number[];
+  total_duration?: number;
+  load_duration?: number;
+  prompt_eval_count?: number;
+  prompt_eval_duration?: number;
+  eval_count?: number;
+  eval_duration?: number;
+}
+
 // Error Types
 export class AIProviderError extends Error {
   constructor(

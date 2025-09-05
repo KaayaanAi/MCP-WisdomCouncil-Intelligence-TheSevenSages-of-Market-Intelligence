@@ -6,7 +6,9 @@ import {
   AnalysisResult, 
   AIProviderError,
   OpenAIResponse,
-  GeminiResponse 
+  GeminiResponse,
+  AnthropicResponse,
+  LocalModelResponse
 } from '../types/index.js';
 
 /**
@@ -47,7 +49,7 @@ abstract class BaseAIProvider implements AIProvider {
       },
       (error) => {
         this.quotaUsed++;
-        return Promise.reject(error);
+        return Promise.reject(error instanceof Error ? error : new Error(String(error)));
       }
     );
   }
@@ -93,7 +95,7 @@ export class OpenAIProvider extends BaseAIProvider {
     }
   }
   
-  async analyze(prompt: string, model: string = 'gpt-4'): Promise<AnalysisResult> {
+  async analyze(prompt: string, model: string = process.env.OPENAI_MODEL || 'gpt-4o-mini'): Promise<AnalysisResult> {
     try {
       const response = await this.http.post<OpenAIResponse>('/chat/completions', {
         model,
@@ -140,7 +142,7 @@ export class OpenAIProvider extends BaseAIProvider {
   }
   
   getModels(): string[] {
-    return ['gpt-4', 'gpt-4-turbo', 'gpt-3.5-turbo'];
+    return ['gpt-4o-mini', 'gpt-4o', 'gpt-4', 'gpt-4-turbo', 'gpt-3.5-turbo'];
   }
   
   protected async testConnection(): Promise<void> {
@@ -153,8 +155,9 @@ export class OpenAIProvider extends BaseAIProvider {
   
   private extractConfidence(content: string): number {
     // Simple confidence extraction from content
-    const confidenceMatch = content.match(/confidence[:\s]+(\d+(?:\.\d+)?)[%\s]/i);
-    if (confidenceMatch && confidenceMatch[1]) {
+    const confidenceRegex = /confidence[:\s]+(\d+(?:\.\d+)?)[%\s]/i;
+    const confidenceMatch = confidenceRegex.exec(content);
+    if (confidenceMatch?.[1]) {
       const confidence = parseFloat(confidenceMatch[1]);
       return confidence > 1 ? confidence / 100 : confidence;
     }
@@ -226,8 +229,9 @@ export class GeminiProvider extends BaseAIProvider {
   }
   
   private extractConfidence(content: string): number {
-    const confidenceMatch = content.match(/confidence[:\s]+(\d+(?:\.\d+)?)[%\s]/i);
-    if (confidenceMatch && confidenceMatch[1]) {
+    const confidenceRegex = /confidence[:\s]+(\d+(?:\.\d+)?)[%\s]/i;
+    const confidenceMatch = confidenceRegex.exec(content);
+    if (confidenceMatch?.[1]) {
       const confidence = parseFloat(confidenceMatch[1]);
       return confidence > 1 ? confidence / 100 : confidence;
     }
@@ -236,10 +240,173 @@ export class GeminiProvider extends BaseAIProvider {
 }
 
 /**
+ * Anthropic Claude Provider Implementation
+ */
+export class AnthropicProvider extends BaseAIProvider {
+  constructor(apiKey: string) {
+    super('anthropic', apiKey, 'https://api.anthropic.com/v1');
+    if (this.http.defaults.headers) {
+      this.http.defaults.headers['x-api-key'] = apiKey;
+      this.http.defaults.headers['anthropic-version'] = '2023-06-01';
+    }
+  }
+  
+  async analyze(prompt: string, model: string = process.env.ANTHROPIC_MODEL || 'claude-3-haiku-20240307'): Promise<AnalysisResult> {
+    try {
+      const response = await this.http.post<AnthropicResponse>('/messages', {
+        model,
+        max_tokens: 2000,
+        temperature: 0.7,
+        system: 'You are a specialized financial analyst AI. Provide detailed, accurate analysis with confidence scores and supporting evidence.',
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ]
+      });
+      
+      const content = response.data.content[0]?.text || '';
+      const tokensUsed = response.data.usage.input_tokens + response.data.usage.output_tokens;
+      
+      secureLogger.aiProviderCall('anthropic', model, true, tokensUsed);
+      
+      return {
+        content,
+        confidence: this.extractConfidence(content),
+        sources: ['Anthropic Claude Analysis'],
+        timestamp: new Date(),
+        analysisType: 'financial_intelligence',
+        metadata: {
+          model,
+          tokensUsed,
+          provider: 'anthropic',
+          inputTokens: response.data.usage.input_tokens,
+          outputTokens: response.data.usage.output_tokens
+        }
+      };
+      
+    } catch (error: any) {
+      secureLogger.aiProviderCall('anthropic', model, false);
+      throw new AIProviderError(
+        `Anthropic API error: ${error.message}`,
+        'anthropic',
+        error.response?.status
+      );
+    }
+  }
+  
+  getModels(): string[] {
+    return [
+      'claude-3-haiku-20240307',    // Most cost-effective
+      'claude-3-sonnet-20240229',   // Balanced performance/cost
+      'claude-3-opus-20240229'      // Highest performance
+    ];
+  }
+  
+  protected async testConnection(): Promise<void> {
+    // Simple test with minimal token usage
+    await this.http.post('/messages', {
+      model: 'claude-3-haiku-20240307',
+      max_tokens: 1,
+      messages: [{ role: 'user', content: 'Hi' }]
+    });
+  }
+  
+  protected getMaxDailyQuota(): number {
+    return 5000; // Conservative estimate for Claude
+  }
+  
+  private extractConfidence(content: string): number {
+    const confidenceRegex = /confidence[:\s]+(\d+(?:\.\d+)?)[%\s]/i;
+    const confidenceMatch = confidenceRegex.exec(content);
+    if (confidenceMatch?.[1]) {
+      const confidence = parseFloat(confidenceMatch[1]);
+      return confidence > 1 ? confidence / 100 : confidence;
+    }
+    return 0.85; // Default confidence for Claude
+  }
+}
+
+/**
+ * Local Model Provider (Ollama) Implementation
+ */
+export class LocalModelProvider extends BaseAIProvider {
+  constructor(baseURL: string = process.env.LOCAL_MODEL_URL || 'http://localhost:11434') {
+    super('local', '', baseURL);
+    // No API key needed for local models
+  }
+  
+  async analyze(prompt: string, model: string = process.env.LOCAL_MODEL_NAME || 'llama2'): Promise<AnalysisResult> {
+    try {
+      const response = await this.http.post<LocalModelResponse>('/api/generate', {
+        model,
+        prompt: `You are a specialized financial analyst AI. Provide detailed, accurate analysis with confidence scores and supporting evidence.\n\n${prompt}`,
+        stream: false
+      });
+      
+      const content = response.data.response || '';
+      
+      secureLogger.aiProviderCall('local', model, true);
+      
+      return {
+        content,
+        confidence: this.extractConfidence(content),
+        sources: ['Local Model Analysis'],
+        timestamp: new Date(),
+        analysisType: 'financial_intelligence',
+        metadata: {
+          model,
+          provider: 'local',
+          totalDuration: response.data.total_duration,
+          evalCount: response.data.eval_count
+        }
+      };
+      
+    } catch (error: any) {
+      secureLogger.aiProviderCall('local', model, false);
+      throw new AIProviderError(
+        `Local model error: ${error.message}`,
+        'local',
+        error.response?.status || 500
+      );
+    }
+  }
+  
+  getModels(): string[] {
+    return [
+      'llama2',           // General purpose
+      'codellama',        // Code-focused
+      'mistral',          // Efficient alternative
+      'llama2:13b',       // Larger model
+      'codellama:13b'     // Larger code model
+    ];
+  }
+  
+  protected async testConnection(): Promise<void> {
+    await this.http.get('/api/tags');
+  }
+  
+  protected getMaxDailyQuota(): number {
+    return 50000; // High quota for local models (limited by hardware only)
+  }
+  
+  private extractConfidence(content: string): number {
+    const confidenceRegex = /confidence[:\s]+(\d+(?:\.\d+)?)[%\s]/i;
+    const confidenceMatch = confidenceRegex.exec(content);
+    if (confidenceMatch?.[1]) {
+      const confidence = parseFloat(confidenceMatch[1]);
+      return confidence > 1 ? confidence / 100 : confidence;
+    }
+    return 0.7; // Default confidence for local models
+  }
+}
+
+/**
  * AI Provider Manager with fallback chain
  */
 export class AIProviderManager {
-  private providers: Map<string, AIProvider> = new Map();
+  private readonly providers: Map<string, AIProvider> = new Map();
   private fallbackChain: string[] = [];
   
   constructor() {
@@ -250,22 +417,90 @@ export class AIProviderManager {
     // Initialize enabled providers
     if (config.aiProviders.openai.enabled && config.aiProviders.openai.apiKey) {
       this.providers.set('openai', new OpenAIProvider(config.aiProviders.openai.apiKey));
+      secureLogger.debug('OpenAI provider initialized');
+    }
+    
+    if (config.aiProviders.anthropic.enabled && config.aiProviders.anthropic.apiKey) {
+      this.providers.set('anthropic', new AnthropicProvider(config.aiProviders.anthropic.apiKey));
+      secureLogger.debug('Anthropic provider initialized');
     }
     
     if (config.aiProviders.gemini.enabled && config.aiProviders.gemini.apiKey) {
       this.providers.set('gemini', new GeminiProvider(config.aiProviders.gemini.apiKey));
+      secureLogger.debug('Gemini provider initialized');
     }
     
-    // TODO: Add other providers (DeepSeek, Groq, OpenRouter)
+    if (config.aiProviders.local.enabled && config.aiProviders.local.url) {
+      this.providers.set('local', new LocalModelProvider(config.aiProviders.local.url));
+      secureLogger.debug('Local model provider initialized');
+    }
     
-    // Setup fallback chain
-    this.fallbackChain = [config.primaryProvider, ...config.fallbackProviders]
-      .filter(provider => this.providers.has(provider));
+    // Note: DeepSeek, Groq, and OpenRouter providers can be added here when needed
+    
+    // Determine primary provider based on AI_PROVIDER env var or automatic detection
+    const preferredProvider = config.aiProvider || this.detectBestAvailableProvider();
+    const finalPrimaryProvider = this.providers.has(preferredProvider) ? preferredProvider : config.primaryProvider;
+    
+    // Setup fallback chain with intelligent ordering (cost-effective first)
+    this.fallbackChain = this.buildOptimalFallbackChain(finalPrimaryProvider);
     
     secureLogger.info('AI Provider Manager initialized', {
       availableProviders: Array.from(this.providers.keys()),
-      fallbackChain: this.fallbackChain
+      primaryProvider: finalPrimaryProvider,
+      fallbackChain: this.fallbackChain,
+      totalProviders: this.providers.size
     });
+  }
+  
+  /**
+   * Automatically detect the best available provider based on API keys
+   */
+  private detectBestAvailableProvider(): string {
+    // Priority order: cost-effective and reliable providers first
+    const providerPriority = ['anthropic', 'openai', 'local', 'gemini'];
+    
+    for (const provider of providerPriority) {
+      if (this.providers.has(provider)) {
+        secureLogger.info(`Auto-detected primary provider: ${provider}`);
+        return provider;
+      }
+    }
+    
+    // Fallback to first available provider
+    const firstAvailable = Array.from(this.providers.keys())[0];
+    if (firstAvailable) {
+      secureLogger.info(`Using first available provider: ${firstAvailable}`);
+      return firstAvailable;
+    }
+    
+    return 'openai'; // Default fallback
+  }
+  
+  /**
+   * Build an optimal fallback chain prioritizing cost-effectiveness
+   */
+  private buildOptimalFallbackChain(primaryProvider: string): string[] {
+    const costOptimizedOrder = [
+      'local',      // Free (if available)
+      'anthropic',  // Cost-effective with Haiku
+      'openai',     // Reliable, moderate cost
+      'gemini',     // Google's offering
+      'deepseek',   // Alternative option
+      'groq',       // High-speed option
+      'openrouter'  // Router/proxy option
+    ];
+    
+    // Start with primary provider
+    const chain = [primaryProvider];
+    
+    // Add other available providers in cost-optimized order
+    for (const provider of costOptimizedOrder) {
+      if (provider !== primaryProvider && this.providers.has(provider)) {
+        chain.push(provider);
+      }
+    }
+    
+    return chain;
   }
   
   async analyze(prompt: string, preferredProvider?: string, model?: string): Promise<AnalysisResult> {

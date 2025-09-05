@@ -15,11 +15,23 @@ const configSchema = z.object({
   aiProviders: z.object({
     openai: z.object({
       apiKey: z.string().min(1),
-      enabled: z.boolean().default(true)
+      enabled: z.boolean().default(true),
+      model: z.string().optional()
+    }),
+    anthropic: z.object({
+      apiKey: z.string().optional(),
+      enabled: z.boolean().default(false),
+      model: z.string().optional()
     }),
     gemini: z.object({
       apiKey: z.string().optional(),
-      enabled: z.boolean().default(false)
+      enabled: z.boolean().default(false),
+      model: z.string().optional()
+    }),
+    local: z.object({
+      url: z.string().optional(),
+      enabled: z.boolean().default(false),
+      model: z.string().optional()
     }),
     deepseek: z.object({
       apiKey: z.string().optional(),
@@ -35,8 +47,10 @@ const configSchema = z.object({
     })
   }),
   
-  primaryProvider: z.enum(['openai', 'gemini', 'deepseek', 'groq', 'openrouter']).default('openai'),
-  fallbackProviders: z.array(z.enum(['openai', 'gemini', 'deepseek', 'groq', 'openrouter'])).default(['gemini', 'deepseek']),
+  // Enhanced provider selection with automatic detection
+  aiProvider: z.enum(['openai', 'anthropic', 'gemini', 'local', 'deepseek', 'groq', 'openrouter']).optional(),
+  primaryProvider: z.enum(['openai', 'anthropic', 'gemini', 'local', 'deepseek', 'groq', 'openrouter']).default('openai'),
+  fallbackProviders: z.array(z.enum(['openai', 'anthropic', 'gemini', 'local', 'deepseek', 'groq', 'openrouter'])).default(['anthropic', 'gemini', 'deepseek']),
   
   // Database Configuration
   database: z.object({
@@ -133,12 +147,24 @@ function parseConfig() {
     
     aiProviders: {
       openai: {
-        apiKey: process.env.OPENAI_API_KEY!,
-        enabled: true
+        apiKey: process.env.OPENAI_API_KEY || '',
+        enabled: !!process.env.OPENAI_API_KEY,
+        model: process.env.OPENAI_MODEL
+      },
+      anthropic: {
+        apiKey: process.env.ANTHROPIC_API_KEY,
+        enabled: !!process.env.ANTHROPIC_API_KEY,
+        model: process.env.ANTHROPIC_MODEL
       },
       gemini: {
         apiKey: process.env.GEMINI_API_KEY,
-        enabled: !!process.env.GEMINI_API_KEY
+        enabled: !!process.env.GEMINI_API_KEY,
+        model: process.env.GEMINI_MODEL
+      },
+      local: {
+        url: process.env.LOCAL_MODEL_URL,
+        enabled: !!process.env.LOCAL_MODEL_URL,
+        model: process.env.LOCAL_MODEL_NAME
       },
       deepseek: {
         apiKey: process.env.DEEPSEEK_API_KEY,
@@ -154,8 +180,10 @@ function parseConfig() {
       }
     },
     
+    // Enhanced provider selection
+    aiProvider: process.env.AI_PROVIDER,
     primaryProvider: process.env.PRIMARY_AI_PROVIDER || 'openai',
-    fallbackProviders: process.env.FALLBACK_AI_PROVIDERS?.split(',') || ['gemini', 'deepseek'],
+    fallbackProviders: process.env.FALLBACK_AI_PROVIDERS?.split(',') || ['anthropic', 'gemini', 'deepseek'],
     
     database: {
       mongoUri: process.env.MONGODB_URI,
