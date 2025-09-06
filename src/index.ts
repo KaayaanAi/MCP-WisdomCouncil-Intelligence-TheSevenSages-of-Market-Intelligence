@@ -7,11 +7,10 @@ import {
   ListToolsRequestSchema,
   Tool 
 } from "@modelcontextprotocol/sdk/types.js";
-import { z } from "zod";
 
 import { config, configForLogging } from "./config.js";
 import { secureLogger } from "./utils/logger.js";
-import { ToolResponse, AnalysisDepth } from "./types/index.js";
+import { ToolResponse } from "./types/index.js";
 
 // Import tools
 import { multiAnalystConsensus } from "./tools/multi-analyst-consensus.js";

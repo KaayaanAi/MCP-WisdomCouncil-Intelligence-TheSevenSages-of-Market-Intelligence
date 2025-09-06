@@ -3,6 +3,8 @@ import { analystManager } from '../services/analysts.js';
 import { secureLogger } from '../utils/logger.js';
 import { config } from '../config.js';
 import { ToolResponse, AnalysisDepth, ConsensusAnalysis } from '../types/index.js';
+import { preventiveValidationService } from '../services/preventive-validation.js';
+import { outputSanitizer } from '../services/output-sanitizer.js';
 
 /**
  * Input validation schema for multi_analyst_consensus tool
@@ -189,19 +191,19 @@ function formatConsensusResponse(
     'deep': '🔬'
   };
 
-  return `# 🧠 **Multi-Analyst Consensus Intelligence Report**
+  const rawResponse = `# 🧠 **Multi-Analyst Consensus Intelligence Report**
 
 ## 📊 **Executive Summary**
 ${analysis.summary}
 
-${verificationResult.verified ? '✅' : '⚠️'} **Verification Status**: ${verificationResult.verified ? 'VERIFIED' : 'REQUIRES REVIEW'} (${(verificationResult.confidence * 100).toFixed(0)}% confidence)
+${verificationResult.verified ? '✅' : '⚠️'} **Verification Status**: ${verificationResult.verified ? 'VERIFIED' : 'REQUIRES REVIEW'} ([CONFIDENCE ASSESSMENT REMOVED])
 
 ---
 
 ## 🎯 **Consensus Analysis**
 ${analysis.consensus}
 
-**Overall Confidence**: ${(analysis.confidence * 100).toFixed(0)}%
+**Overall Confidence**: [CONFIDENCE ASSESSMENT REMOVED]
 **Risk Level**: ${riskEmoji[analysis.riskLevel]} **${analysis.riskLevel}**
 **Monitoring Timeframe**: ${analysis.timeframe}
 
@@ -211,7 +213,7 @@ ${analysis.consensus}
 
 ${analysis.analystOpinions.map(opinion => `
 ### ${opinion.analyst.replace('_', ' ').toUpperCase()} 
-**Confidence**: ${(opinion.confidence * 100).toFixed(0)}%
+**Confidence**: [CONFIDENCE ASSESSMENT REMOVED]
 **Opinion**: ${opinion.opinion}
 **Key Reasoning**: ${opinion.reasoning}
 ${opinion.supporting_evidence.length > 0 ? `**Evidence**: ${opinion.supporting_evidence.slice(0, 2).join(', ')}` : ''}
@@ -224,7 +226,7 @@ ${analysis.recommendations.map((rec, idx) => `${idx + 1}. ${rec}`).join('\n')}
 
 ${analysis.disagreements.length > 0 ? `
 ## ⚠️ **Areas of Disagreement**
-${analysis.disagreements.map((disagreement, idx) => `• ${disagreement}`).join('\n')}
+${analysis.disagreements.map((disagreement) => `• ${disagreement}`).join('\n')}
 ` : ''}
 
 ${!verificationResult.verified && verificationResult.issues.length > 0 ? `
@@ -243,6 +245,21 @@ ${verificationResult.issues.map(issue => `• ${issue}`).join('\n')}
 
 ---
 *🔒 Powered by MCP NextGen Financial Intelligence • AI-Enhanced Analysis with Human-Grade Insights*`;
+
+  // CRITICAL: Sanitize ALL output before returning to user
+  const sanitizationResult = outputSanitizer.sanitizeOutput(rawResponse);
+  
+  // Log sanitization results
+  if (sanitizationResult.flagsRemoved.length > 0) {
+    secureLogger.warn('Consensus response sanitized', {
+      numericDataBlocked: sanitizationResult.numericDataBlocked,
+      confidenceScoresFiltered: sanitizationResult.confidenceScoresFiltered,
+      flagsRemoved: sanitizationResult.flagsRemoved.length
+    });
+  }
+
+  // Return sanitized content
+  return sanitizationResult.sanitizedContent;
 }
 
 /**
@@ -261,6 +278,40 @@ export async function multiAnalystConsensus(args: any): Promise<ToolResponse> {
       analysisDepth: analysis_depth,
       analystCount: sage_perspectives?.length || 7,
       inputLength: news_item.length
+    });
+    
+    // CRITICAL: Check preventive validation BEFORE any analysis
+    const validationResult = await preventiveValidationService.validateQuery(news_item);
+    
+    // HARD STOP: If validation blocks analysis, return refusal immediately
+    if (!validationResult.allowAnalysis) {
+      const duration = Date.now() - startTime;
+      
+      secureLogger.info('Analysis blocked by preventive validation', {
+        blockReason: validationResult.blockReason,
+        duration,
+        queryType: validationResult.classification.type
+      });
+      
+      // Return structured refusal response
+      const refusalResponse = validationResult.structuredResponse;
+      if (!refusalResponse) {
+        throw new Error('Validation blocked but no structured response provided');
+      }
+      
+      return {
+        content: [{ 
+          type: "text", 
+          text: `❌ **ANALYSIS BLOCKED**\n\n**REASON**: ${validationResult.blockReason}\n\n**RESPONSE**: ${refusalResponse.analysis}\n\n**ALTERNATIVE**: ${refusalResponse.disclaimer}\n\n---\n*Request processed in ${duration}ms - Analysis prevented to avoid data fabrication*`
+        }],
+        isError: false // Not an error - intentional block
+      };
+    }
+    
+    // Only proceed with analysis if validation allows it
+    secureLogger.info('Validation passed, proceeding with analysis', {
+      classificationType: validationResult.classification.type,
+      dataType: validationResult.classification.dataType
     });
     
     // Get consensus analysis from analyst manager

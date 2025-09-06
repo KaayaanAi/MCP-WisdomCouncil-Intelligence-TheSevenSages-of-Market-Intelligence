@@ -1,6 +1,7 @@
 import { aiProviderManager } from './ai-provider.js';
 import { secureLogger } from '../utils/logger.js';
 import { temporalContextService } from './temporal-context.js';
+import { preventiveValidationService } from './preventive-validation.js';
 import { 
   Analyst, 
   AnalysisResult, 
@@ -20,14 +21,44 @@ abstract class BaseAnalyst implements Analyst {
   ) {}
   
   async analyze(input: string, context?: any): Promise<AnalysisResult> {
-    // Get temporal-aware prompt with current context
+    // STEP 1: PREVENTIVE VALIDATION - Block fabrication BEFORE AI analysis
+    const preventiveValidation = await preventiveValidationService.validateQuery(input, context);
+    
+    if (!preventiveValidation.allowAnalysis) {
+      // HARD STOP: Return structured response without AI analysis to prevent fabrication
+      secureLogger.warn(`Analyst ${this.name} blocked by preventive validation`, {
+        blockReason: preventiveValidation.blockReason,
+        classification: preventiveValidation.classification.type,
+        dataType: preventiveValidation.classification.dataType
+      });
+      
+      return {
+        content: preventiveValidation.structuredResponse?.analysis || preventiveValidation.requiredResponse || 'Analysis blocked to prevent data fabrication',
+        confidence: 0.1, // Very low confidence for blocked requests
+        analysisType: `${this.name}_blocked`,
+        sources: [],
+        timestamp: new Date(),
+        metadata: {
+          analyst: this.name,
+          specialty: this.specialty,
+          preventiveValidation: {
+            blocked: true,
+            reason: preventiveValidation.blockReason,
+            classification: preventiveValidation.classification,
+            structuredResponse: preventiveValidation.structuredResponse
+          }
+        }
+      };
+    }
+
+    // STEP 2: If allowed, proceed with temporal-aware analysis
     const temporalPrompt = temporalContextService.generateTemporalPrompt();
     const fullPrompt = `${temporalPrompt}\n\n${this.buildPrompt(input, context)}`;
     
     try {
       const result = await aiProviderManager.analyze(fullPrompt);
       
-      // Validate content for temporal consistency and data fabrication
+      // STEP 3: Post-analysis validation (reactive backup)
       const validation = temporalContextService.validateAnalysisContent(result.content, input);
       
       // Use corrected content if validation found issues
@@ -38,7 +69,7 @@ abstract class BaseAnalyst implements Analyst {
       
       // Log validation results
       if (validation.flags.length > 0) {
-        secureLogger.warn(`Analyst ${this.name} content validation flags`, {
+        secureLogger.warn(`Analyst ${this.name} post-analysis validation flags`, {
           flagCount: validation.flags.length,
           confidence: validation.confidence,
           flags: validation.flags.map(f => f.type)
@@ -55,6 +86,11 @@ abstract class BaseAnalyst implements Analyst {
           ...result.metadata,
           analyst: this.name,
           specialty: this.specialty,
+          preventiveValidation: {
+            blocked: false,
+            classification: preventiveValidation.classification,
+            structuredResponse: preventiveValidation.structuredResponse
+          },
           temporalValidation: {
             isValid: validation.isValid,
             confidence: validation.confidence,
@@ -102,7 +138,7 @@ export class PoliticalAnalyst extends BaseAnalyst {
     );
   }
   
-  protected buildPrompt(input: string, context?: any): string {
+  protected buildPrompt(input: string, _context?: any): string {
     return `${this.getBasePrompt()}
 
 POLITICAL ANALYSIS REQUEST:
@@ -132,7 +168,7 @@ export class EconomicAnalyst extends BaseAnalyst {
     );
   }
   
-  protected buildPrompt(input: string, context?: any): string {
+  protected buildPrompt(input: string, _context?: any): string {
     return `${this.getBasePrompt()}
 
 ECONOMIC ANALYSIS REQUEST:
@@ -163,7 +199,7 @@ export class GeopoliticalAnalyst extends BaseAnalyst {
     );
   }
   
-  protected buildPrompt(input: string, context?: any): string {
+  protected buildPrompt(input: string, _context?: any): string {
     return `${this.getBasePrompt()}
 
 GEOPOLITICAL ANALYSIS REQUEST:
@@ -194,7 +230,7 @@ export class FinancialAnalyst extends BaseAnalyst {
     );
   }
   
-  protected buildPrompt(input: string, context?: any): string {
+  protected buildPrompt(input: string, _context?: any): string {
     return `${this.getBasePrompt()}
 
 FINANCIAL MARKETS ANALYSIS REQUEST:
@@ -226,7 +262,7 @@ export class CryptoAnalyst extends BaseAnalyst {
     );
   }
   
-  protected buildPrompt(input: string, context?: any): string {
+  protected buildPrompt(input: string, _context?: any): string {
     return `${this.getBasePrompt()}
 
 CRYPTOCURRENCY ANALYSIS REQUEST:
@@ -258,7 +294,7 @@ export class TechAnalyst extends BaseAnalyst {
     );
   }
   
-  protected buildPrompt(input: string, context?: any): string {
+  protected buildPrompt(input: string, _context?: any): string {
     return `${this.getBasePrompt()}
 
 TECHNOLOGY ANALYSIS REQUEST:
@@ -290,7 +326,7 @@ export class BehavioralAnalyst extends BaseAnalyst {
     );
   }
   
-  protected buildPrompt(input: string, context?: any): string {
+  protected buildPrompt(input: string, _context?: any): string {
     return `${this.getBasePrompt()}
 
 BEHAVIORAL ANALYSIS REQUEST:
@@ -366,7 +402,10 @@ export class AnalystManager {
     // Get analysis from each analyst
     const analystOpinions: AnalystOpinion[] = [];
     const analysisPromises = analystsToUse.map(async (analystName) => {
-      const analyst = this.analysts.get(analystName)!;
+      const analyst = this.analysts.get(analystName);
+      if (!analyst) {
+        throw new Error(`Analyst ${analystName} not found`);
+      }
       
       try {
         const result = await analyst.analyze(input, { depth });
@@ -422,7 +461,7 @@ export class AnalystManager {
     const averageConfidence = totalWeight / opinions.length;
     
     // Identify areas of agreement and disagreement
-    const agreements: string[] = [];
+    // const agreements: string[] = []; // Reserved for future consensus building enhancements
     const disagreements: string[] = [];
     
     // Simple consensus building (can be enhanced with more sophisticated algorithms)

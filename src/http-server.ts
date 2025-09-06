@@ -34,7 +34,7 @@ export class FinancialIntelligenceHttpServer {
     // JSON parsing with size limits
     this.app.use(express.json({ 
       limit: '10mb',
-      verify: (req: any, res, buf) => {
+      verify: (req: any, _res, buf) => {
         req.rawBody = buf;
       }
     }));
@@ -111,12 +111,12 @@ export class FinancialIntelligenceHttpServer {
   
   private setupRoutes(): void {
     // Simple web testing interface
-    this.app.get('/', (req: Request, res: Response) => {
+    this.app.get('/', (_req: Request, res: Response) => {
       res.send(this.getTestingInterface());
     });
     
     // Testing endpoint specifically
-    this.app.get('/test', (req: Request, res: Response) => {
+    this.app.get('/test', (_req: Request, res: Response) => {
       res.send(this.getTestingInterface());
     });
     
@@ -170,7 +170,7 @@ export class FinancialIntelligenceHttpServer {
     });
     
     // Health check endpoint
-    this.app.get('/health', (req: Request, res: Response) => {
+    this.app.get('/health', (_req: Request, res: Response) => {
       const healthStatus = {
         status: 'healthy',
         timestamp: new Date().toISOString(),
@@ -266,7 +266,7 @@ export class FinancialIntelligenceHttpServer {
   
   private setupErrorHandling(): void {
     // Global error handler
-    this.app.use((error: Error, req: Request, res: Response, next: NextFunction) => {
+    this.app.use((error: Error, req: Request, res: Response, _next: NextFunction) => {
       secureLogger.error('Unhandled HTTP error', { 
         error: error.message,
         stack: error.stack,
@@ -690,7 +690,7 @@ export class FinancialIntelligenceHttpServer {
   }
   
   async start(): Promise<void> {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const server = this.app.listen(config.httpPort, '0.0.0.0', () => {
         secureLogger.info(`MCP Financial Intelligence HTTP Server running`, {
           port: config.httpPort,
@@ -701,6 +701,11 @@ export class FinancialIntelligenceHttpServer {
           ]
         });
         resolve();
+      });
+      
+      server.on('error', (error) => {
+        secureLogger.error('HTTP server listen error', { error: error.message, port: config.httpPort });
+        reject(error);
       });
       
       // Graceful shutdown

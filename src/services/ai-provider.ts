@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import { config } from '../config.js';
 import { secureLogger } from '../utils/logger.js';
+import { ProviderConfidenceExtractors } from '../utils/confidence-extractor.js';
 import { 
   AIProvider, 
   AnalysisResult, 
@@ -120,7 +121,7 @@ export class OpenAIProvider extends BaseAIProvider {
       
       return {
         content,
-        confidence: this.extractConfidence(content),
+        confidence: ProviderConfidenceExtractors.openai(content),
         sources: ['OpenAI Analysis'],
         timestamp: new Date(),
         analysisType: 'financial_intelligence',
@@ -153,16 +154,6 @@ export class OpenAIProvider extends BaseAIProvider {
     return 10000; // Conservative estimate for OpenAI
   }
   
-  private extractConfidence(content: string): number {
-    // Simple confidence extraction from content
-    const confidenceRegex = /confidence[:\s]+(\d+(?:\.\d+)?)[%\s]/i;
-    const confidenceMatch = confidenceRegex.exec(content);
-    if (confidenceMatch?.[1]) {
-      const confidence = parseFloat(confidenceMatch[1]);
-      return confidence > 1 ? confidence / 100 : confidence;
-    }
-    return 0.8; // Default confidence
-  }
 }
 
 /**
@@ -196,7 +187,7 @@ export class GeminiProvider extends BaseAIProvider {
       
       return {
         content,
-        confidence: this.extractConfidence(content),
+        confidence: ProviderConfidenceExtractors.gemini(content),
         sources: ['Gemini Analysis'],
         timestamp: new Date(),
         analysisType: 'financial_intelligence',
@@ -228,15 +219,6 @@ export class GeminiProvider extends BaseAIProvider {
     return 1000; // Gemini free tier limit
   }
   
-  private extractConfidence(content: string): number {
-    const confidenceRegex = /confidence[:\s]+(\d+(?:\.\d+)?)[%\s]/i;
-    const confidenceMatch = confidenceRegex.exec(content);
-    if (confidenceMatch?.[1]) {
-      const confidence = parseFloat(confidenceMatch[1]);
-      return confidence > 1 ? confidence / 100 : confidence;
-    }
-    return 0.75;
-  }
 }
 
 /**
@@ -273,7 +255,7 @@ export class AnthropicProvider extends BaseAIProvider {
       
       return {
         content,
-        confidence: this.extractConfidence(content),
+        confidence: ProviderConfidenceExtractors.anthropic(content),
         sources: ['Anthropic Claude Analysis'],
         timestamp: new Date(),
         analysisType: 'financial_intelligence',
@@ -317,15 +299,6 @@ export class AnthropicProvider extends BaseAIProvider {
     return 5000; // Conservative estimate for Claude
   }
   
-  private extractConfidence(content: string): number {
-    const confidenceRegex = /confidence[:\s]+(\d+(?:\.\d+)?)[%\s]/i;
-    const confidenceMatch = confidenceRegex.exec(content);
-    if (confidenceMatch?.[1]) {
-      const confidence = parseFloat(confidenceMatch[1]);
-      return confidence > 1 ? confidence / 100 : confidence;
-    }
-    return 0.85; // Default confidence for Claude
-  }
 }
 
 /**
@@ -351,7 +324,7 @@ export class LocalModelProvider extends BaseAIProvider {
       
       return {
         content,
-        confidence: this.extractConfidence(content),
+        confidence: ProviderConfidenceExtractors.local(content),
         sources: ['Local Model Analysis'],
         timestamp: new Date(),
         analysisType: 'financial_intelligence',
@@ -391,15 +364,6 @@ export class LocalModelProvider extends BaseAIProvider {
     return 50000; // High quota for local models (limited by hardware only)
   }
   
-  private extractConfidence(content: string): number {
-    const confidenceRegex = /confidence[:\s]+(\d+(?:\.\d+)?)[%\s]/i;
-    const confidenceMatch = confidenceRegex.exec(content);
-    if (confidenceMatch?.[1]) {
-      const confidence = parseFloat(confidenceMatch[1]);
-      return confidence > 1 ? confidence / 100 : confidence;
-    }
-    return 0.7; // Default confidence for local models
-  }
 }
 
 /**

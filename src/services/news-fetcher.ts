@@ -4,8 +4,7 @@ import { config } from '../config.js';
 import { secureLogger } from '../utils/logger.js';
 import { 
   NewsItem, 
-  NewsAPIResponse, 
-  RSSFeedItem 
+  NewsAPIResponse 
 } from '../types/index.js';
 
 /**
@@ -37,8 +36,8 @@ const RSS_FEEDS = {
  * News API Manager with smart quota handling
  */
 class NewsAPIManager {
-  private http: AxiosInstance;
-  private quotaUsage: Map<string, { count: number; resetTime: Date }> = new Map();
+  private readonly http: AxiosInstance;
+  private readonly quotaUsage: Map<string, { count: number; resetTime: Date }> = new Map();
   
   constructor() {
     this.http = axios.create({
@@ -217,8 +216,8 @@ class NewsAPIManager {
  * RSS Feed Manager
  */
 class RSSFeedManager {
-  private parser: RSSParser;
-  private http: AxiosInstance;
+  private readonly parser: RSSParser;
+  // private readonly _http: AxiosInstance; // Reserved for future HTTP-based RSS fetching
   
   constructor() {
     this.parser = new RSSParser({
@@ -230,12 +229,7 @@ class RSSFeedManager {
       }
     });
     
-    this.http = axios.create({
-      timeout: 10000,
-      headers: {
-        'User-Agent': 'MCP-NextGen-Financial-Intelligence/1.0'
-      }
-    });
+    // Reserved for future HTTP-based RSS fetching functionality
   }
   
   async fetchRSSFeeds(category: string, maxItems: number = 10): Promise<NewsItem[]> {
@@ -332,9 +326,9 @@ class RSSFeedManager {
  * Main News Fetcher Service
  */
 export class NewsFetcherService {
-  private rssManager: RSSFeedManager;
-  private apiManager: NewsAPIManager;
-  private cache: Map<string, { data: NewsItem[]; timestamp: Date }> = new Map();
+  private readonly rssManager: RSSFeedManager;
+  private readonly apiManager: NewsAPIManager;
+  private readonly cache: Map<string, { data: NewsItem[]; timestamp: Date }> = new Map();
   
   constructor() {
     this.rssManager = new RSSFeedManager();
@@ -351,7 +345,11 @@ export class NewsFetcherService {
     
     // Check cache first
     if (useCache && this.cache.has(cacheKey)) {
-      const cached = this.cache.get(cacheKey)!;
+      const cached = this.cache.get(cacheKey);
+      if (!cached) {
+        // This shouldn't happen since we checked has() above, but for type safety
+        return [];
+      }
       const cacheAge = Date.now() - cached.timestamp.getTime();
       const cacheMaxAge = 30 * 60 * 1000; // 30 minutes
       
@@ -421,7 +419,7 @@ export class NewsFetcherService {
       .replace(/[^\w\s]/g, '')
       .split(/\s+/)
       .filter(word => word.length > 2 && !commonWords.includes(word))
-      .sort()
+      .sort((a, b) => a.localeCompare(b))
       .slice(0, 5); // Take first 5 significant words
     
     return words.join('-');

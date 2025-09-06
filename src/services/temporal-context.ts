@@ -56,7 +56,7 @@ export interface ValidationFlag {
 export class TemporalContextService {
   private currentContext: TemporalContext | null = null;
   private readonly KUWAIT_TIMEZONE = 'Asia/Kuwait'; // +3 GMT
-  private readonly US_MARKET_TIMEZONE = 'America/New_York'; // EST/EDT
+  // private readonly _US_MARKET_TIMEZONE = 'America/New_York'; // EST/EDT - Reserved for future timezone conversions
 
   constructor() {
     // Initialize with minimal context synchronously
@@ -185,7 +185,7 @@ Your analysis request:`;
   /**
    * Validate analysis content for temporal consistency and data fabrication
    */
-  public validateAnalysisContent(content: string, originalInput: string): DataValidationResult {
+  public validateAnalysisContent(content: string, _originalInput: string): DataValidationResult {
     const flags: ValidationFlag[] = [];
     let correctedContent = content;
     const context = this.getCurrentContext();
@@ -232,7 +232,7 @@ Your analysis request:`;
   /**
    * Check for temporal inconsistencies
    */
-  private checkTemporalConsistency(content: string, context: TemporalContext, flags: ValidationFlag[]): void {
+  private checkTemporalConsistency(content: string, _context: TemporalContext, flags: ValidationFlag[]): void {
     
     // Check for phrases claiming future events as past
     const futurePastPhrases = [
