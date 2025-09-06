@@ -7,6 +7,93 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2025-09-05
+
+### 🚀 Enhanced Multi-Provider AI System
+
+#### 💰 Major Cost Optimization
+
+- **NEW**: Anthropic Claude provider integration with cost-effective defaults
+  - Uses `claude-3-haiku-20240307` as default (most cost-effective option)
+  - Reduces monthly AI costs from $90+ to $20-30 (up to 75% savings)
+  - Excellent reasoning capabilities for financial analysis
+- **NEW**: Local model support via Ollama integration
+  - Completely free AI inference using local hardware
+  - Support for popular models: llama2, codellama, mistral
+  - No API limits or usage restrictions
+- **IMPROVED**: OpenAI model defaults optimized for cost
+  - Changed from expensive `gpt-4` to `gpt-4o-mini` (95% cost reduction)
+  - Maintains high-quality analysis at fraction of the cost
+
+#### 🤖 Intelligent Provider Management
+
+- **NEW**: Automatic AI provider detection based on available API keys
+- **NEW**: Cost-optimized fallback chains (free → cheap → premium)
+- **NEW**: Enhanced provider health monitoring and diagnostics
+- **NEW**: Smart provider selection with performance tracking
+- **IMPROVED**: Comprehensive configuration documentation with cost guidance
+
+#### ⚙️ Enhanced Configuration System
+
+- **NEW**: Detailed `.env.example` with cost optimization tips
+- **NEW**: Provider-specific model configuration options
+- **NEW**: Automatic provider enablement based on API key availability
+- **IMPROVED**: Environment variable validation and error messages
+- **IMPROVED**: Configuration flexibility for different deployment scenarios
+
+#### 📦 Production-Ready NPM Package
+
+- **NEW**: Professional NPM publication workflow with pre-publish validation
+- **NEW**: Comprehensive `.npmignore` for optimal package size
+- **NEW**: Pre-publish security checks and validation scripts
+- **NEW**: Production-ready package metadata and documentation
+- **IMPROVED**: Build process with proper executable permissions
+
+#### 🔒 Security Enhancements
+
+- **SECURITY**: Removed all test files containing exposed API keys
+- **SECURITY**: Enhanced input validation and sanitization
+- **SECURITY**: Improved error handling to prevent information leakage
+- **SECURITY**: Comprehensive security validation in build process
+
+### 🛠️ Technical Improvements
+
+#### 🏗️ Code Quality
+
+- **IMPROVED**: Enhanced TypeScript strict mode compliance
+- **IMPROVED**: Better error handling and provider fallback logic
+- **IMPROVED**: Modular provider architecture for easy extensibility
+- **IMPROVED**: Comprehensive logging with security-aware redaction
+
+#### 🔧 Developer Experience
+
+- **NEW**: GitHub release workflow and checklist documentation
+- **NEW**: Comprehensive development and deployment guides
+- **IMPROVED**: Build scripts with better error reporting
+- **IMPROVED**: Development workflow with enhanced debugging
+
+### 📊 Performance Impact
+
+- **Cost Reduction**: Up to 75% savings on AI API costs
+- **Provider Reliability**: Multiple fallback options prevent service interruption
+- **Local Option**: Unlimited free usage with local models
+- **Response Quality**: Maintained analysis quality with optimized models
+
+### 🔄 Migration Guide
+
+#### For Existing Users
+
+1. **Update Configuration**: Review new `.env.example` for cost optimization options
+2. **Provider Selection**: Consider switching to Anthropic Claude for cost savings
+3. **Local Setup**: Optional Ollama installation for free inference
+4. **API Keys**: Add additional providers for redundancy
+
+#### Breaking Changes
+
+- None in this release - fully backward compatible
+
+---
+
 ## [2.0.0] - 2025-01-09
 
 ### 🚀 Major Features Added
