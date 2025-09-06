@@ -7,6 +7,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.2] - 2025-09-06
+
+### 🔐 Security Hardening Release
+
+#### Critical Security Fixes
+- **SECURITY**: Remove exposed API keys from `.env.example` configuration file
+  - Replace actual API keys with secure placeholder values
+  - Prevents accidental credential exposure in version control
+  - Add comprehensive security validation documentation
+
+#### AI Safety Enhancements
+- **NEW**: Preventive validation system to block AI data fabrication
+  - Pre-analysis query validation to prevent hallucinated financial data
+  - Structured response system for blocked queries
+  - Comprehensive validation classification framework
+- **NEW**: Output sanitization service to remove fabricated confidence scores
+  - Automatic filtering of potentially fabricated numerical data
+  - Sanitization of AI-generated confidence assessments
+  - Enhanced data integrity verification
+
+#### Code Quality Improvements
+- **NEW**: Dedicated confidence extraction utility module
+- **IMPROVED**: TypeScript code quality with unused parameter handling
+- **IMPROVED**: Enhanced error handling and server startup validation
+- **UPDATED**: Dependencies including dotenv to latest secure version (17.2.2)
+- **NEW**: Comprehensive validation testing framework
+
+#### Developer Experience
+- **NEW**: Validation test suite for security features
+- **NEW**: Preventive validation summary documentation
+- **IMPROVED**: Code organization with extracted utility modules
+
 ## [2.0.1] - 2025-09-05
 
 ### 🚀 Enhanced Multi-Provider AI System
