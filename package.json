@@ -1,7 +1,7 @@
 {
   "name": "mcp-nextgen-financial-intelligence",
-  "version": "2.0.2",
-  "description": "🧠 Enterprise-grade MCP server with temporal awareness system preventing AI data fabrication. Features 7 specialized AI analyst personas, professional web interface, and comprehensive security hardening. Delivers reliable financial intelligence for Claude Desktop and HTTP clients.",
+  "version": "3.0.0",
+  "description": "🧠 Universal MCP server with quad-protocol support (STDIO, HTTP REST, HTTP MCP, WebSocket MCP). Features 7 specialized AI analyst personas, temporal awareness system, and n8n-nodes-mcp compatibility. Delivers real-time financial intelligence with comprehensive security hardening.",
   "type": "module",
   "main": "build/index.js",
   "bin": {
@@ -35,6 +35,10 @@
   "keywords": [
     "mcp",
     "model-context-protocol",
+    "universal-mcp",
+    "quad-protocol",
+    "websocket-mcp",
+    "n8n-nodes-mcp",
     "claude-desktop",
     "financial-intelligence",
     "temporal-awareness",
@@ -57,6 +61,7 @@
     "typescript",
     "rest-api",
     "http-server",
+    "websocket-server",
     "financial-data",
     "investment-analysis",
     "risk-assessment",
@@ -64,7 +69,10 @@
     "production-ready",
     "performance-optimized",
     "kuwait-timezone",
-    "economic-calendar"
+    "economic-calendar",
+    "real-time-mcp",
+    "stdio-mcp",
+    "http-mcp"
   ],
   "author": "Kaayaan Ai",
   "license": "MIT",
