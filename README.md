@@ -1,7 +1,7 @@
 # MCP NextGen Financial Intelligence
 
 **v2.0.1** - Enterprise-grade MCP server providing AI-enhanced financial
-intelligence through 7 specialized analyst personas with **multi-provider AI system**, 
+intelligence through 7 specialized analyst personas with **multi-provider AI system**,
 **temporal awareness**, and **comprehensive security hardening**.
 
 ## ⭐ **What's New in v2.0.1**
@@ -9,7 +9,8 @@ intelligence through 7 specialized analyst personas with **multi-provider AI sys
 ### 💰 **Major Cost Optimization (Up to 75% Savings)**
 
 - **Multi-Provider AI System**: Anthropic Claude, Local Models (Ollama), OpenAI optimization
-- **Cost-Effective Defaults**: `claude-3-haiku` and `gpt-4o-mini` instead of expensive models
+- **Cost-Effective Defaults**: `claude-3-haiku` and `gpt-4o-mini` instead of expensive
+  models
 - **Free Option**: Local model integration for unlimited free AI inference
 - **Smart Fallbacks**: Automatic provider switching for maximum reliability
 - **Monthly Savings**: From $90+ to $20-30 per month
@@ -56,11 +57,14 @@ intelligence through 7 specialized analyst personas with **multi-provider AI sys
 6. **Tech Analyst** - AI developments, technological disruption
 7. **Behavioral Analyst** - Market psychology, sentiment analysis
 
-## 🚀 **Triple Protocol Support**
+## 🚀 **Universal MCP Protocol Support**
+
+**Complete quad-protocol implementation for maximum compatibility:**
 
 - **STDIO MCP** - For Claude Desktop integration
-- **HTTP REST API** - For general HTTP clients  
-- **HTTP MCP Protocol** - For n8n-nodes-mcp compatibility
+- **HTTP REST API** - For general HTTP clients and web applications
+- **HTTP MCP Protocol** - For MCP clients over HTTP (JSON-RPC 2.0)
+- **WebSocket MCP Protocol** - For n8n-nodes-mcp and real-time clients
 
 ## 🛠️ **Quick Start**
 
@@ -98,7 +102,7 @@ npm run build
 
 ### Usage Modes
 
-**STDIO Mode (Claude Desktop):**
+**STDIO Mode (Claude Desktop - Default):**
 
 ```bash
 npm start
@@ -112,11 +116,30 @@ npm run start:http
 # Visit http://localhost:3001 for professional web testing interface
 ```
 
+**WebSocket Mode (n8n-nodes-mcp + Real-time clients):**
+
+```bash
+npm run start:ws
+# WebSocket MCP server runs on ws://localhost:3003
+```
+
+**Universal Mode (All Protocols Simultaneously):**
+
+```bash
+npm run start:universal
+# HTTP Server: http://localhost:3001
+# WebSocket MCP: ws://localhost:3003  
+# STDIO MCP: Direct connection via MCP client
+# All protocols active simultaneously
+```
+
 **Development:**
 
 ```bash
-npm run dev        # STDIO mode
-npm run dev:http   # HTTP mode
+npm run dev           # STDIO mode
+npm run dev:http      # HTTP mode
+npm run dev:ws        # WebSocket mode  
+npm run dev:universal # Universal mode
 ```
 
 ### 🌐 **Web Testing Interface**
@@ -160,7 +183,9 @@ Real-time financial news with AI impact analysis.
 }
 ```
 
-## 📡 **HTTP API Endpoints**
+## 📡 **API Endpoints**
+
+### HTTP Endpoints (Port 3001)
 
 - `GET /` - Professional web testing interface
 - `GET /test` - Testing interface (same as root)
@@ -169,6 +194,14 @@ Real-time financial news with AI impact analysis.
 - `POST /tools/multi_analyst_consensus` - REST API for consensus analysis
 - `POST /tools/fetch_breaking_news` - REST API for breaking news
 - `POST /mcp` - JSON-RPC 2.0 MCP protocol endpoint
+
+### WebSocket Endpoints (Port 3003)
+
+- `ws://localhost:3003` - WebSocket MCP protocol endpoint
+  - Supports full MCP protocol over WebSocket
+  - Compatible with n8n-nodes-mcp
+  - Real-time bidirectional communication
+  - JSON-RPC 2.0 over WebSocket transport
 
 ## 🔒 **Security Features**
 
@@ -225,16 +258,57 @@ curl -X POST http://localhost:3001/tools/fetch_breaking_news \
   -d '{"category": "crypto", "max_items": 5}'
 ```
 
+**WebSocket MCP Testing:**
+
+```bash
+# Start WebSocket server
+npm run start:ws
+
+# Test with included test client
+node test-websocket-mcp.js
+
+# Manual WebSocket testing with wscat (npm install -g wscat)
+wscat -c ws://localhost:3003
+
+# Send MCP initialize message:
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"clientInfo":{"name":"test-client","version":"1.0.0"}}}
+
+# Send tools list request:
+{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}
+```
+
+**Universal Mode Testing:**
+
+```bash
+# Start all protocols
+npm run start:universal
+
+# Test HTTP endpoint
+curl http://localhost:3001/health
+
+# Test WebSocket endpoint  
+wscat -c ws://localhost:3003
+
+# Test STDIO (via MCP inspector)
+npm run inspector
+```
+
 ## ⚙️ **Environment Variables**
 
 Required:
 
 - `OPENAI_API_KEY` - OpenAI API key
 
-Optional:
+Optional Server Configuration:
 
 - `HTTP_MODE=true` - Enable HTTP server mode
-- `HTTP_PORT=3001` - HTTP server port
+- `WEBSOCKET_MODE=true` - Enable WebSocket MCP server mode  
+- `UNIVERSAL_MODE=true` - Enable all protocols simultaneously
+- `HTTP_PORT=3001` - HTTP server port (default: 3001)
+- `WEBSOCKET_PORT=3003` - WebSocket server port (default: 3003)
+
+Optional API Keys:
+
 - `GEMINI_API_KEY` - Google Gemini API key
 - `DEEPSEEK_API_KEY` - DeepSeek API key
 - `GROQ_API_KEY` - Groq API key
@@ -245,7 +319,7 @@ Optional:
 
 ## 🤝 **Integration Examples**
 
-**Claude Desktop:**
+**Claude Desktop (STDIO MCP):**
 
 ```json
 {
@@ -258,10 +332,56 @@ Optional:
 }
 ```
 
-**n8n with n8n-nodes-mcp:**
+**n8n with n8n-nodes-mcp (WebSocket MCP - Recommended):**
 
-- Server URL: `http://localhost:3001/mcp`
-- Use JSON-RPC 2.0 format
+```bash
+# Start WebSocket server
+npm run start:ws
+
+# Configure n8n-nodes-mcp:
+# Server URL: ws://localhost:3003
+# Protocol: WebSocket MCP
+# Supports real-time bidirectional communication
+```
+
+**n8n with n8n-nodes-mcp (HTTP MCP - Alternative):**
+
+```bash
+# Start HTTP server  
+npm run start:http
+
+# Configure n8n-nodes-mcp:
+# Server URL: http://localhost:3001/mcp
+# Protocol: HTTP MCP (JSON-RPC 2.0)
+```
+
+**WebSocket MCP Client (JavaScript Example):**
+
+```javascript
+import WebSocket from 'ws';
+
+const ws = new WebSocket('ws://localhost:3003');
+
+// Initialize MCP protocol
+ws.on('open', () => {
+  ws.send(JSON.stringify({
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'initialize',
+    params: {
+      protocolVersion: '2024-11-05',
+      capabilities: { tools: {} },
+      clientInfo: { name: 'my-client', version: '1.0.0' }
+    }
+  }));
+});
+
+// Handle responses
+ws.on('message', (data) => {
+  const response = JSON.parse(data.toString());
+  console.log('Received:', response);
+});
+```
 
 ## 📈 **Performance** ⚡
 

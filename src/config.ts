@@ -8,7 +8,10 @@ dotenv.config();
 const configSchema = z.object({
   // Server Configuration
   httpMode: z.boolean().default(false),
+  websocketMode: z.boolean().default(false),
+  universalMode: z.boolean().default(false),
   httpPort: z.number().min(1000).max(65535).default(3001),
+  websocketPort: z.number().min(1000).max(65535).default(3003),
   nodeEnv: z.enum(['development', 'production', 'test']).default('development'),
   
   // AI Provider Configuration
@@ -142,7 +145,10 @@ function parseConfig() {
   
   const rawConfig = {
     httpMode: process.env.HTTP_MODE === 'true',
+    websocketMode: process.env.WEBSOCKET_MODE === 'true',
+    universalMode: process.env.UNIVERSAL_MODE === 'true',
     httpPort: parseInt(process.env.HTTP_PORT || '3001', 10),
+    websocketPort: parseInt(process.env.WEBSOCKET_PORT || '3003', 10),
     nodeEnv: process.env.NODE_ENV || 'development',
     
     aiProviders: {

@@ -21,7 +21,7 @@ import { fetchBreakingNews } from "./tools/fetch-breaking-news.js";
  * Provides advanced financial analysis through 7 specialized AI analyst personas
  */
 class FinancialIntelligenceServer {
-  private server: Server;
+  private readonly server: Server;
   
   constructor() {
     this.server = new Server(
@@ -161,6 +161,21 @@ class FinancialIntelligenceServer {
   
   
   async start(): Promise<void> {
+    // Check for Universal mode (all protocols)
+    if (config.universalMode) {
+      secureLogger.info("Universal mode requested, starting all protocol servers");
+      await this.startUniversalMode();
+      return;
+    }
+    
+    // Check if WebSocket mode is requested
+    if (config.websocketMode) {
+      secureLogger.info("WebSocket mode requested, starting WebSocket MCP server");
+      const { startWebSocketServer } = await import('./websocket-server.js');
+      await startWebSocketServer();
+      return;
+    }
+    
     // Check if HTTP mode is requested
     if (config.httpMode) {
       secureLogger.info("HTTP mode requested, starting HTTP server instead");
@@ -169,7 +184,7 @@ class FinancialIntelligenceServer {
       return;
     }
     
-    // Start STDIO MCP server
+    // Start STDIO MCP server (default)
     secureLogger.info("Starting MCP Financial Intelligence Server", {
       mode: 'STDIO',
       config: configForLogging
@@ -179,6 +194,45 @@ class FinancialIntelligenceServer {
     await this.server.connect(transport);
     
     secureLogger.info("MCP Financial Intelligence Server running on STDIO");
+  }
+
+  private async startUniversalMode(): Promise<void> {
+    const promises: Promise<void>[] = [];
+    
+    try {
+      // Start HTTP server (includes REST API + MCP endpoint + web interface)
+      secureLogger.info("Universal Mode: Starting HTTP server...");
+      const { FinancialIntelligenceHttpServer } = await import('./http-server.js');
+      const httpServer = new FinancialIntelligenceHttpServer();
+      promises.push(httpServer.start());
+      
+      // Start WebSocket MCP server
+      secureLogger.info("Universal Mode: Starting WebSocket MCP server...");
+      const { FinancialIntelligenceWebSocketServer } = await import('./websocket-server.js');
+      const wsServer = new FinancialIntelligenceWebSocketServer();
+      promises.push(wsServer.start());
+      
+      // Wait for both servers to start
+      await Promise.all(promises);
+      
+      secureLogger.info("Universal Mode: All servers started successfully", {
+        protocols: ['STDIO', 'HTTP REST', 'HTTP MCP', 'WebSocket MCP'],
+        endpoints: [
+          `HTTP: http://localhost:${config.httpPort}`,
+          `HTTP MCP: http://localhost:${config.httpPort}/mcp`,
+          `WebSocket MCP: ws://localhost:${config.websocketPort}`,
+          'STDIO: Direct connection via MCP client'
+        ]
+      });
+      
+      // STDIO server also runs in universal mode for direct MCP connections
+      const transport = new StdioServerTransport();
+      await this.server.connect(transport);
+      
+    } catch (error) {
+      secureLogger.error("Failed to start universal mode servers", { error });
+      throw error;
+    }
   }
 }
 
