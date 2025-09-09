@@ -14,6 +14,9 @@ import { SERVER_CONSTANTS, ERROR_MESSAGES } from './constants/server-constants.j
 import { TOOL_DEFINITIONS } from './shared/tool-definitions.js';
 import { UniversalToolExecutor } from './shared/tool-executor.js';
 
+// Import database manager
+import { databaseManager } from './services/database-manager.js';
+
 /**
  * HTTP Server supporting both REST API and MCP protocol endpoints
  * Provides triple protocol support: STDIO MCP + HTTP REST + HTTP MCP
@@ -448,17 +451,22 @@ export class FinancialIntelligenceHttpServer {
     return providers;
   }
   
-  private checkDatabaseHealth(): Record<string, string> {
-    const databases: Record<string, string> = {};
+  private checkDatabaseHealth(): Record<string, any> {
+    const databaseHealth = databaseManager.getHealthStatus();
     
-    if (config.database.mongoUri) {
-      databases.mongodb = 'configured';
-    }
-    if (config.database.redisUrl) {
-      databases.redis = 'configured';
-    }
-    
-    return databases;
+    return {
+      mongodb: {
+        status: databaseHealth.mongodb.status,
+        details: databaseHealth.mongodb.details
+      },
+      redis: {
+        status: databaseHealth.redis.status,
+        details: databaseHealth.redis.details
+      },
+      overall: databaseHealth.overall,
+      caching_available: databaseManager.isCachingAvailable(),
+      persistence_available: databaseManager.isPersistenceAvailable()
+    };
   }
   
   private async runN8nCompatibilityTests(): Promise<any> {

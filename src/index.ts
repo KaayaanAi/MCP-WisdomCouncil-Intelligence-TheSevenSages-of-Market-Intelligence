@@ -15,6 +15,9 @@ import { ToolResponse } from "./types/index.js";
 import { TOOL_DEFINITIONS } from "./shared/tool-definitions.js";
 import { UniversalToolExecutor } from "./shared/tool-executor.js";
 
+// Import database manager
+import { databaseManager } from "./services/database-manager.js";
+
 /**
  * MCP NextGen Financial Intelligence Server
  * Provides advanced financial analysis through 7 specialized AI analyst personas
@@ -80,6 +83,13 @@ class FinancialIntelligenceServer {
   
   
   async start(): Promise<void> {
+    // Initialize database services
+    try {
+      await databaseManager.initialize();
+    } catch (error) {
+      secureLogger.warn("Database initialization failed, continuing without database support", { error });
+    }
+    
     // Check for Universal mode (all protocols)
     if (config.universalMode) {
       secureLogger.info("Universal mode requested, starting all protocol servers");
@@ -106,7 +116,8 @@ class FinancialIntelligenceServer {
     // Start STDIO MCP server (default)
     secureLogger.info("Starting MCP Financial Intelligence Server", {
       mode: 'STDIO',
-      config: configForLogging
+      config: configForLogging,
+      databases: databaseManager.getHealthStatus()
     });
     
     const transport = new StdioServerTransport();
@@ -156,13 +167,15 @@ class FinancialIntelligenceServer {
 }
 
 // Error handling and graceful shutdown
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
   secureLogger.info('Received SIGINT, shutting down gracefully');
+  await databaseManager.shutdown();
   process.exit(0);
 });
 
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
   secureLogger.info('Received SIGTERM, shutting down gracefully');
+  await databaseManager.shutdown();
   process.exit(0);
 });
 

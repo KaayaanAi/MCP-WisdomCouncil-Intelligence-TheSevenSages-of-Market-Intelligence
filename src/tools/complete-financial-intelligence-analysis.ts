@@ -4,6 +4,7 @@ import { StandardErrorHandler } from '../utils/error-handler.js';
 import { SERVER_CONSTANTS } from '../constants/server-constants.js';
 import { multiAnalystConsensus } from './multi-analyst-consensus.js';
 import { fetchBreakingNews } from './fetch-breaking-news.js';
+import { databaseManager } from '../services/database-manager.js';
 
 /**
  * Complete Financial Intelligence Analysis Tool
@@ -29,9 +30,29 @@ export interface CompleteAnalysisArgs {
 
 export async function completeFinancialIntelligenceAnalysis(args: CompleteAnalysisArgs): Promise<ToolResponse> {
   const startTime = Date.now();
+  const analysisType = 'complete_intelligence';
   
   try {
     const params = parseAnalysisParameters(args);
+    
+    // Check for cached results first
+    if (databaseManager.isCachingAvailable()) {
+      const cachedResult = await databaseManager.getCachedAnalysis(args.query, analysisType);
+      if (cachedResult) {
+        secureLogger.info('Serving cached complete financial intelligence analysis', {
+          query: args.query,
+          cacheAge: 'from_cache'
+        });
+
+        return {
+          content: [{ 
+            type: "text", 
+            text: cachedResult 
+          }],
+          isError: false
+        };
+      }
+    }
     
     secureLogger.info('Starting complete financial intelligence analysis', {
       query: args.query,
@@ -51,6 +72,20 @@ export async function completeFinancialIntelligenceAnalysis(args: CompleteAnalys
     const responseText = formatCompleteAnalysisResponse(results);
 
     logSuccessfulCompletion(args.query, results);
+
+    // Store results in database for caching
+    if (databaseManager.isAvailable()) {
+      databaseManager.storeAnalysisResult(
+        args.query,
+        analysisType,
+        responseText,
+        {
+          processingTime: results.processing_time_ms,
+          provider: 'complete_intelligence',
+          tokensUsed: extractTokenUsage(results)
+        }
+      ).catch(error => secureLogger.debug('Failed to cache analysis result:', error));
+    }
 
     return {
       content: [{ 
@@ -262,4 +297,37 @@ function getAnalysisStatus(analysisResult: any): string {
   }
   
   return '✅ Success';
+}
+
+/**
+ * Extract token usage from analysis results for database storage
+ */
+function extractTokenUsage(results: any): number {
+  let totalTokens = 0;
+  
+  // Try to extract token usage from consensus analysis
+  if (results.consensus_analysis && !results.consensus_analysis.isError) {
+    // This would need to be implemented based on how tokens are tracked
+    // For now, estimate based on analysis complexity
+    totalTokens += estimateTokenUsage(results.consensus_analysis.content);
+  }
+  
+  // Try to extract token usage from news analysis
+  if (results.breaking_news && !results.breaking_news.isError) {
+    totalTokens += estimateTokenUsage(results.breaking_news.content);
+  }
+  
+  return totalTokens;
+}
+
+/**
+ * Estimate token usage based on content length (rough approximation)
+ */
+function estimateTokenUsage(content: string): number {
+  if (typeof content !== 'string') {
+    return 0;
+  }
+  
+  // Rough approximation: ~4 characters per token on average
+  return Math.ceil(content.length / 4);
 }
