@@ -5,31 +5,25 @@ import { config } from '../config.js';
 import { ToolResponse, AnalysisDepth, ConsensusAnalysis } from '../types/index.js';
 import { preventiveValidationService } from '../services/preventive-validation.js';
 import { outputSanitizer } from '../services/output-sanitizer.js';
+import { StandardErrorHandler, AnalysisErrorHandler } from '../utils/error-handler.js';
+import { SERVER_CONSTANTS } from '../constants/server-constants.js';
 
 /**
  * Input validation schema for multi_analyst_consensus tool
  */
 const multiAnalystConsensusSchema = z.object({
   news_item: z.string()
-    .min(10, "News item must be at least 10 characters")
-    .max(5000, "News item cannot exceed 5000 characters")
-    .regex(/^[a-zA-Z0-9\s\-_,.!?'"()[\]:;@#$%&+=*/\\|<>{}~`]+$/, "News item contains invalid characters"),
+    .min(SERVER_CONSTANTS.VALIDATION.MIN_INPUT_LENGTH, "News item must be at least 10 characters")
+    .max(SERVER_CONSTANTS.VALIDATION.MAX_INPUT_LENGTH, "News item cannot exceed 5000 characters")
+    .regex(SERVER_CONSTANTS.VALIDATION.INPUT_PATTERN, "News item contains invalid characters"),
   
-  analysis_depth: z.enum(["quick", "standard", "deep"])
+  analysis_depth: z.enum([SERVER_CONSTANTS.ANALYSIS_DEPTHS.QUICK, SERVER_CONSTANTS.ANALYSIS_DEPTHS.STANDARD, SERVER_CONSTANTS.ANALYSIS_DEPTHS.DEEP] as const)
     .optional()
-    .default("standard"),
+    .default(SERVER_CONSTANTS.ANALYSIS_DEPTHS.STANDARD as any),
   
-  sage_perspectives: z.array(z.enum([
-    "political_analyst",
-    "economic_analyst", 
-    "geopolitical_analyst",
-    "financial_analyst",
-    "crypto_analyst",
-    "tech_analyst",
-    "behavioral_analyst"
-  ]))
+  sage_perspectives: z.array(z.enum(SERVER_CONSTANTS.ANALYST_TYPES as any))
     .optional()
-    .refine(arr => !arr || arr.length <= 7, "Cannot specify more than 7 analysts")
+    .refine(arr => !arr || arr.length <= SERVER_CONSTANTS.VALIDATION.MAX_ANALYSTS, "Cannot specify more than 7 analysts")
     .refine(arr => !arr || new Set(arr).size === arr.length, "Cannot specify duplicate analysts")
 });
 
@@ -86,7 +80,7 @@ async function tripleVerification(analysis: ConsensusAnalysis, originalInput: st
     };
     
   } catch (error) {
-    secureLogger.error('Triple verification failed', { error });
+    secureLogger.error('Triple verification failed', { error: StandardErrorHandler.getErrorMessage(error) });
     return {
       verified: false,
       confidence: 0,
@@ -381,12 +375,10 @@ export async function multiAnalystConsensus(args: any): Promise<ToolResponse> {
       };
     }
     
-    return {
-      content: [{ 
-        type: "text", 
-        text: `❌ **Multi-Analyst Consensus Error**: ${error instanceof Error ? error.message : String(error)}\n\nThe analysis system encountered an issue. This could be due to:\n• AI provider availability\n• Network connectivity\n• System overload\n\nPlease try again in a few moments.` 
-      }],
-      isError: true
-    };
+    return AnalysisErrorHandler.createAnalysisErrorResponse(
+      error,
+      "Multi-Analyst Consensus",
+      args.news_item
+    );
   }
 }

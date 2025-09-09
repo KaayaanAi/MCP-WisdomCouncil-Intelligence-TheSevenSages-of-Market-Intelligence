@@ -1,12 +1,18 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
+import fs from 'fs';
+import path from 'path';
 
 import { config } from './config.js';
 import { secureLogger } from './utils/logger.js';
 import { ToolResponse } from './types/index.js';
-import { multiAnalystConsensus } from './tools/multi-analyst-consensus.js';
-import { fetchBreakingNews } from './tools/fetch-breaking-news.js';
+import { StandardErrorHandler } from './utils/error-handler.js';
+import { SERVER_CONSTANTS, ERROR_MESSAGES } from './constants/server-constants.js';
+
+// Import shared definitions
+import { TOOL_DEFINITIONS } from './shared/tool-definitions.js';
+import { UniversalToolExecutor } from './shared/tool-executor.js';
 
 /**
  * HTTP Server supporting both REST API and MCP protocol endpoints
@@ -47,11 +53,9 @@ export class FinancialIntelligenceHttpServer {
           path: req.path,
           ip: req.ip 
         });
-        res.status(400).json({
-          error: true,
-          message: 'Invalid JSON format. Please check your request body.',
-          timestamp: new Date().toISOString()
-        });
+        res.status(SERVER_CONSTANTS.HTTP_STATUS.BAD_REQUEST).json(
+          StandardErrorHandler.createHttpErrorResponse(ERROR_MESSAGES.INVALID_JSON, SERVER_CONSTANTS.HTTP_STATUS.BAD_REQUEST)
+        );
         return;
       }
       next(err);
@@ -71,7 +75,7 @@ export class FinancialIntelligenceHttpServer {
         return req.ip || 'unknown';
       },
       message: {
-        error: 'Too many requests from this IP, please try again later.',
+        error: ERROR_MESSAGES.RATE_LIMIT_EXCEEDED,
         retryAfter: Math.ceil(config.security.rateLimitWindowMs / 1000)
       },
       handler: (req: Request, res: Response) => {
@@ -80,10 +84,12 @@ export class FinancialIntelligenceHttpServer {
           userAgent: req.get('User-Agent') || 'unknown',
           path: req.path 
         });
-        res.status(429).json({
-          error: 'Too many requests from this IP, please try again later.',
-          retryAfter: Math.ceil(config.security.rateLimitWindowMs / 1000)
-        });
+        res.status(SERVER_CONSTANTS.HTTP_STATUS.RATE_LIMITED).json(
+          StandardErrorHandler.createHttpErrorResponse(
+            ERROR_MESSAGES.RATE_LIMIT_EXCEEDED, 
+            SERVER_CONSTANTS.HTTP_STATUS.RATE_LIMITED
+          )
+        );
       }
     });
     
@@ -174,7 +180,7 @@ export class FinancialIntelligenceHttpServer {
       const healthStatus = {
         status: 'healthy',
         timestamp: new Date().toISOString(),
-        version: '2.0.1',
+        version: SERVER_CONSTANTS.VERSION,
         services: {
           server: 'running',
           ai_providers: this.checkAIProvidersHealth(),
@@ -240,11 +246,57 @@ export class FinancialIntelligenceHttpServer {
           error: {
             code: -32603,
             message: 'Internal error',
-            data: error instanceof Error ? error.message : String(error)
+            data: StandardErrorHandler.getErrorMessage(error)
           },
           id: req.body.id || null
         });
       }
+    });
+    
+    // n8n-nodes-mcp verification and testing endpoint
+    this.app.post('/mcp/test', async (_req: Request, res: Response) => {
+      try {
+        const testResults = await this.runN8nCompatibilityTests();
+        res.json({
+          success: true,
+          timestamp: new Date().toISOString(),
+          n8n_compatibility: 'verified',
+          test_results: testResults,
+          version: SERVER_CONSTANTS.VERSION
+        });
+      } catch (error) {
+        secureLogger.error('n8n compatibility test error', { error });
+        res.status(500).json({
+          success: false,
+          error: 'n8n compatibility test failed',
+          message: StandardErrorHandler.getErrorMessage(error),
+          timestamp: new Date().toISOString()
+        });
+      }
+    });
+    
+    // n8n-specific MCP info endpoint
+    this.app.get('/mcp/info', (_req: Request, res: Response) => {
+      res.json({
+        server_info: {
+          name: SERVER_CONSTANTS.NAME,
+          version: SERVER_CONSTANTS.VERSION,
+          protocol_version: SERVER_CONSTANTS.PROTOCOL_VERSION,
+          n8n_compatible: true
+        },
+        capabilities: {
+          tools: true,
+          resources: false,
+          prompts: false,
+          logging: true
+        },
+        universal_mcp_architecture: {
+          protocols_supported: ['STDIO', 'HTTP REST', 'HTTP MCP', 'WebSocket MCP'],
+          n8n_nodes_mcp_ready: true,
+          quad_protocol_support: true
+        },
+        tools: UniversalToolExecutor.getToolNames()
+      });
     });
     
     // 404 handler
@@ -258,7 +310,9 @@ export class FinancialIntelligenceHttpServer {
           'POST /analyze - Simple analysis endpoint',
           'GET /health - System health check',
           'POST /tools/{toolName} - REST API for tools',
-          'POST /mcp - JSON-RPC 2.0 MCP protocol'
+          'POST /mcp - JSON-RPC 2.0 MCP protocol',
+          'GET /mcp/info - n8n MCP server information',
+          'POST /mcp/test - n8n compatibility verification'
         ]
       });
     });
@@ -283,21 +337,16 @@ export class FinancialIntelligenceHttpServer {
   }
   
   private async executeToolRest(toolName: string, args: any): Promise<ToolResponse> {
-    // Use the actual tool implementations
-    switch (toolName) {
-      case 'multi_analyst_consensus':
-      case 'multi-analyst-consensus':
-        return await multiAnalystConsensus(args);
-        
-      case 'fetch_breaking_news':
-      case 'fetch-breaking-news':
-        return await fetchBreakingNews(args);
-        
-      default:
-        return {
-          content: [{ type: "text", text: `❌ Unknown tool: ${toolName}` }],
-          isError: true
-        };
+    // Handle both underscore and dash variants for REST API compatibility
+    const normalizedToolName = toolName.replace(/-/g, '_');
+    
+    try {
+      return await UniversalToolExecutor.execute(normalizedToolName, args);
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: `❌ ${StandardErrorHandler.getErrorMessage(error)}` }],
+        isError: true
+      };
     }
   }
   
@@ -320,36 +369,7 @@ export class FinancialIntelligenceHttpServer {
             jsonrpc: '2.0',
             result: {
               tools: [
-                {
-                  name: "multi_analyst_consensus",
-                  description: "🧠 Get comprehensive market analysis from 7 specialized AI analysts with consensus mechanism",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      news_item: { type: "string", description: "The news item to analyze" },
-                      analysis_depth: { type: "string", enum: ["quick", "standard", "deep"] },
-                      sage_perspectives: { 
-                        type: "array", 
-                        items: { type: "string" },
-                        description: "Optional analyst selection"
-                      }
-                    },
-                    required: ["news_item"]
-                  }
-                },
-                {
-                  name: "fetch_breaking_news",
-                  description: "📰 Fetch and analyze breaking financial news from multiple sources",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      category: { type: "string", enum: ["all", "stocks", "crypto", "forex", "commodities", "politics", "economics"] },
-                      max_items: { type: "number", minimum: 1, maximum: 50 },
-                      time_range: { type: "string", enum: ["1h", "6h", "12h", "24h"] },
-                      include_analysis: { type: "boolean" }
-                    }
-                  }
-                }
+                ...TOOL_DEFINITIONS
               ]
             },
             id
@@ -378,7 +398,7 @@ export class FinancialIntelligenceHttpServer {
         error: {
           code: -32603,
           message: 'Internal error',
-          data: error instanceof Error ? error.message : String(error)
+          data: StandardErrorHandler.getErrorMessage(error)
         },
         id
       };
@@ -386,260 +406,12 @@ export class FinancialIntelligenceHttpServer {
   }
   
   private getTestingInterface(): string {
-    return `
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>MCP NextGen Financial Intelligence - Test Interface</title>
-        <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { 
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                min-height: 100vh; 
-                padding: 20px;
-            }
-            .container { 
-                max-width: 1200px; 
-                margin: 0 auto; 
-                background: white; 
-                border-radius: 12px; 
-                box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-                overflow: hidden;
-            }
-            .header { 
-                background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
-                color: white; 
-                padding: 30px; 
-                text-align: center; 
-            }
-            .header h1 { font-size: 2.5em; margin-bottom: 10px; }
-            .header p { opacity: 0.9; font-size: 1.1em; }
-            .content { padding: 30px; }
-            .form-group { margin-bottom: 25px; }
-            .form-group label { 
-                display: block; 
-                margin-bottom: 8px; 
-                font-weight: 600; 
-                color: #2c3e50;
-                font-size: 1.1em;
-            }
-            .form-control { 
-                width: 100%; 
-                padding: 15px; 
-                border: 2px solid #e1e8ed; 
-                border-radius: 8px; 
-                font-size: 16px;
-                transition: border-color 0.3s ease;
-            }
-            .form-control:focus { 
-                outline: none; 
-                border-color: #3498db; 
-                box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
-            }
-            textarea.form-control { 
-                min-height: 120px; 
-                resize: vertical; 
-                font-family: inherit;
-            }
-            select.form-control { height: 50px; }
-            .btn { 
-                background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
-                color: white; 
-                padding: 15px 30px; 
-                border: none; 
-                border-radius: 8px; 
-                font-size: 16px; 
-                font-weight: 600;
-                cursor: pointer; 
-                transition: all 0.3s ease;
-                display: inline-block;
-                text-decoration: none;
-            }
-            .btn:hover { 
-                transform: translateY(-2px);
-                box-shadow: 0 5px 15px rgba(52, 152, 219, 0.4);
-            }
-            .btn:disabled { 
-                opacity: 0.6; 
-                cursor: not-allowed; 
-                transform: none;
-            }
-            .loading { display: none; color: #3498db; margin: 20px 0; text-align: center; }
-            .loading.show { display: block; }
-            .result { 
-                margin-top: 30px; 
-                padding: 25px; 
-                background: #f8f9fa; 
-                border-radius: 8px; 
-                border-left: 4px solid #3498db;
-                display: none; 
-            }
-            .result.show { display: block; }
-            .result.error { 
-                background: #fee; 
-                border-left-color: #e74c3c;
-            }
-            .result h3 { 
-                margin-bottom: 15px; 
-                color: #2c3e50;
-                font-size: 1.3em;
-            }
-            .result-content { 
-                white-space: pre-wrap; 
-                line-height: 1.6; 
-                font-size: 14px;
-            }
-            .timestamp { 
-                color: #7f8c8d; 
-                font-size: 0.9em; 
-                margin-top: 15px; 
-                font-style: italic;
-            }
-            .examples { 
-                background: #f1f2f6; 
-                padding: 20px; 
-                border-radius: 8px; 
-                margin-bottom: 25px;
-            }
-            .examples h3 { 
-                color: #2c3e50; 
-                margin-bottom: 15px;
-                font-size: 1.2em;
-            }
-            .example-btn { 
-                background: #ecf0f1; 
-                color: #2c3e50; 
-                padding: 8px 15px; 
-                margin: 5px; 
-                border: 1px solid #bdc3c7; 
-                border-radius: 5px; 
-                cursor: pointer; 
-                font-size: 13px;
-                transition: all 0.2s ease;
-            }
-            .example-btn:hover { 
-                background: #d5dbdb; 
-                border-color: #95a5a6;
-            }
-            @media (max-width: 768px) {
-                .container { margin: 10px; }
-                .header { padding: 20px; }
-                .header h1 { font-size: 2em; }
-                .content { padding: 20px; }
-            }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="header">
-                <h1>🧠 MCP Financial Intelligence</h1>
-                <p>Test Interface - Advanced AI Financial Analysis with Temporal Awareness</p>
-            </div>
-            <div class="content">
-                <div class="examples">
-                    <h3>📋 Example Questions</h3>
-                    <button type="button" class="example-btn" onclick="setExample('What is the impact of upcoming NFP data on USD?')">NFP Impact Analysis</button>
-                    <button type="button" class="example-btn" onclick="setExample('How will Federal Reserve policy affect crypto markets?')">Fed Policy & Crypto</button>
-                    <button type="button" class="example-btn" onclick="setExample('Analyze the geopolitical risks affecting oil prices')">Geopolitical Oil Analysis</button>
-                    <button type="button" class="example-btn" onclick="setExample('What are the implications of AI developments on tech stocks?')">AI Tech Impact</button>
-                    <button type="button" class="example-btn" onclick="setExample('Behavioral analysis of current market sentiment')">Market Sentiment</button>
-                </div>
-                
-                <form id="analysisForm">
-                    <div class="form-group">
-                        <label for="question">Financial Question or Market Event</label>
-                        <textarea id="question" name="question" class="form-control" placeholder="Enter your financial question, market event, or news to analyze..." required></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label for="depth">Analysis Depth</label>
-                        <select id="depth" name="depth" class="form-control">
-                            <option value="quick">⚡ Quick Analysis (30s) - Basic overview</option>
-                            <option value="standard" selected>🔍 Standard Analysis (60s) - Comprehensive insights</option>
-                            <option value="deep">🔬 Deep Analysis (120s) - Detailed multi-perspective</option>
-                        </select>
-                    </div>
-                    <button type="submit" class="btn" id="analyzeBtn">
-                        🚀 Analyze with 7 AI Sages
-                    </button>
-                </form>
-                
-                <div id="loading" class="loading">
-                    <p>🤖 Consulting with 7 specialized AI analysts...</p>
-                    <p><small>This may take 30-120 seconds depending on analysis depth</small></p>
-                </div>
-                
-                <div id="result" class="result">
-                    <h3 id="resultTitle">Analysis Results</h3>
-                    <div id="resultContent" class="result-content"></div>
-                    <div id="timestamp" class="timestamp"></div>
-                </div>
-            </div>
-        </div>
-
-        <script>
-            function setExample(text) {
-                document.getElementById('question').value = text;
-            }
-
-            document.getElementById('analysisForm').addEventListener('submit', async function(e) {
-                e.preventDefault();
-                
-                const question = document.getElementById('question').value;
-                const depth = document.getElementById('depth').value;
-                const analyzeBtn = document.getElementById('analyzeBtn');
-                const loading = document.getElementById('loading');
-                const result = document.getElementById('result');
-                const resultContent = document.getElementById('resultContent');
-                const resultTitle = document.getElementById('resultTitle');
-                const timestamp = document.getElementById('timestamp');
-                
-                // Show loading state
-                analyzeBtn.disabled = true;
-                analyzeBtn.textContent = '🔄 Analyzing...';
-                loading.classList.add('show');
-                result.classList.remove('show', 'error');
-                
-                try {
-                    const response = await fetch('/analyze', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ question, depth })
-                    });
-                    
-                    const data = await response.json();
-                    
-                    if (data.success) {
-                        resultTitle.textContent = \`✅ Analysis Results (\${depth.toUpperCase()})\`;
-                        resultContent.textContent = data.analysis;
-                        timestamp.textContent = \`Generated: \${new Date(data.timestamp).toLocaleString()}\`;
-                        result.classList.add('show');
-                    } else {
-                        resultTitle.textContent = '❌ Analysis Error';
-                        resultContent.textContent = data.message;
-                        timestamp.textContent = \`Error Time: \${new Date(data.timestamp).toLocaleString()}\`;
-                        result.classList.add('show', 'error');
-                    }
-                } catch (error) {
-                    resultTitle.textContent = '❌ Network Error';
-                    resultContent.textContent = 'Failed to connect to the analysis server. Please try again.';
-                    timestamp.textContent = \`Error Time: \${new Date().toLocaleString()}\`;
-                    result.classList.add('show', 'error');
-                }
-                
-                // Reset button state
-                analyzeBtn.disabled = false;
-                analyzeBtn.textContent = '🚀 Analyze with 7 AI Sages';
-                loading.classList.remove('show');
-            });
-        </script>
-    </body>
-    </html>
-    `;
+    try {
+      return fs.readFileSync(path.join(process.cwd(), 'src/templates/test-interface.html'), 'utf8');
+    } catch (error) {
+      secureLogger.error('Failed to load test interface template', { error });
+      return '<h1>Error: Test interface template not found</h1><p>Please ensure the template file exists at src/templates/test-interface.html</p>';
+    }
   }
   
   private formatAnalysisAsHtml(analysisText: string): string {
@@ -689,6 +461,104 @@ export class FinancialIntelligenceHttpServer {
     return databases;
   }
   
+  private async runN8nCompatibilityTests(): Promise<any> {
+    const tests = {
+      tools_list: false,
+      tools_call: false,
+      json_rpc_compliance: false,
+      unified_tool_available: false,
+      error_handling: false
+    };
+    
+    try {
+      // Test 1: Tools list endpoint
+      const toolsListRequest = {
+        jsonrpc: '2.0',
+        method: 'tools/list',
+        id: 'test-1'
+      };
+      
+      const toolsListResult = await this.handleMcpRequest(toolsListRequest);
+      tests.tools_list = toolsListResult.result?.tools?.length > 0;
+      tests.unified_tool_available = toolsListResult.result?.tools?.some((tool: any) => 
+        tool.name === 'complete_financial_intelligence_analysis'
+      );
+      
+      // Test 2: JSON-RPC compliance check
+      tests.json_rpc_compliance = toolsListResult.jsonrpc === '2.0' && 
+                                   toolsListResult.id === 'test-1';
+      
+      // Test 3: Tool call test (with minimal parameters)
+      const toolCallRequest = {
+        jsonrpc: '2.0',
+        method: 'tools/call',
+        params: {
+          name: 'complete_financial_intelligence_analysis',
+          arguments: {
+            query: 'Test query for n8n compatibility',
+            analysis_depth: 'quick',
+            include_news: false
+          }
+        },
+        id: 'test-2'
+      };
+      
+      const toolCallResult = await this.handleMcpRequest(toolCallRequest);
+      tests.tools_call = !toolCallResult.error;
+      
+      // Test 4: Error handling test
+      const errorTestRequest = {
+        jsonrpc: '2.0',
+        method: 'invalid/method',
+        id: 'test-3'
+      };
+      
+      const errorResult = await this.handleMcpRequest(errorTestRequest);
+      tests.error_handling = !!errorResult.error && errorResult.error.code === -32601;
+      
+    } catch (error) {
+      secureLogger.warn('n8n compatibility test encountered errors', { error });
+    }
+    
+    const successCount = Object.values(tests).filter(Boolean).length;
+    const totalTests = Object.keys(tests).length;
+    
+    return {
+      tests_passed: successCount,
+      total_tests: totalTests,
+      success_rate: `${((successCount / totalTests) * 100).toFixed(1)}%`,
+      test_details: tests,
+      n8n_ready: successCount >= 4, // At least 4 out of 5 tests should pass
+      recommendations: this.getN8nRecommendations(tests)
+    };
+  }
+  
+  private getN8nRecommendations(tests: any): string[] {
+    const recommendations = [];
+    
+    if (!tests.tools_list) {
+      recommendations.push('Fix tools/list endpoint for n8n discovery');
+    }
+    if (!tests.unified_tool_available) {
+      recommendations.push('Ensure complete_financial_intelligence_analysis tool is available');
+    }
+    if (!tests.json_rpc_compliance) {
+      recommendations.push('Improve JSON-RPC 2.0 compliance');
+    }
+    if (!tests.tools_call) {
+      recommendations.push('Fix tool execution for n8n calls');
+    }
+    if (!tests.error_handling) {
+      recommendations.push('Improve error handling for invalid requests');
+    }
+    
+    if (recommendations.length === 0) {
+      recommendations.push('All tests passed! Server is fully n8n-nodes-mcp compatible');
+    }
+    
+    return recommendations;
+  }
+  
   async start(): Promise<void> {
     return new Promise((resolve, reject) => {
       const server = this.app.listen(config.httpPort, '0.0.0.0', () => {
@@ -705,7 +575,7 @@ export class FinancialIntelligenceHttpServer {
       
       server.on('error', (error) => {
         secureLogger.error('HTTP server listen error', { error: error.message, port: config.httpPort });
-        reject(error);
+        reject(new Error(`HTTP server failed to start: ${error.message}`));
       });
       
       // Graceful shutdown

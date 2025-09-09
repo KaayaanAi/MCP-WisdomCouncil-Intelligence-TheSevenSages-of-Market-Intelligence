@@ -4,17 +4,16 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { 
   CallToolRequestSchema, 
-  ListToolsRequestSchema,
-  Tool 
+  ListToolsRequestSchema
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { config, configForLogging } from "./config.js";
 import { secureLogger } from "./utils/logger.js";
 import { ToolResponse } from "./types/index.js";
 
-// Import tools
-import { multiAnalystConsensus } from "./tools/multi-analyst-consensus.js";
-import { fetchBreakingNews } from "./tools/fetch-breaking-news.js";
+// Import shared definitions
+import { TOOL_DEFINITIONS } from "./shared/tool-definitions.js";
+import { UniversalToolExecutor } from "./shared/tool-executor.js";
 
 /**
  * MCP NextGen Financial Intelligence Server
@@ -27,7 +26,7 @@ class FinancialIntelligenceServer {
     this.server = new Server(
       {
         name: "mcp-nextgen-financial-intelligence",
-        version: "2.0.1"
+        version: "3.0.0"
       },
       {
         capabilities: {
@@ -42,74 +41,7 @@ class FinancialIntelligenceServer {
   private setupHandlers(): void {
     // List available tools
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
-      const tools: Tool[] = [
-        {
-          name: "multi_analyst_consensus",
-          description: "🧠 Get comprehensive market analysis from 7 specialized AI analysts with consensus mechanism. Provides unified insights on market events, news, or conditions.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              news_item: {
-                type: "string",
-                description: "The news item, market event, or condition to analyze"
-              },
-              analysis_depth: {
-                type: "string",
-                enum: ["quick", "standard", "deep"],
-                description: "Depth of analysis: 'quick' (30s), 'standard' (60s), 'deep' (120s)"
-              },
-              sage_perspectives: {
-                type: "array",
-                items: {
-                  type: "string",
-                  enum: [
-                    "political_analyst",
-                    "economic_analyst", 
-                    "geopolitical_analyst",
-                    "financial_analyst",
-                    "crypto_analyst",
-                    "tech_analyst",
-                    "behavioral_analyst"
-                  ]
-                },
-                description: "Optional: Specify which analysts to include (default: all 7)"
-              }
-            },
-            required: ["news_item"]
-          }
-        },
-        {
-          name: "fetch_breaking_news",
-          description: "📰 Fetch and analyze breaking financial news from multiple RSS feeds and APIs. Provides prioritized, relevant market news with impact assessment.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              category: {
-                type: "string",
-                enum: ["all", "stocks", "crypto", "forex", "commodities", "politics", "economics"],
-                description: "News category to fetch (default: 'all')"
-              },
-              max_items: {
-                type: "number",
-                minimum: 1,
-                maximum: 50,
-                description: "Maximum number of news items to return (default: 10)"
-              },
-              time_range: {
-                type: "string",
-                enum: ["1h", "6h", "12h", "24h"],
-                description: "Time range for news items (default: '6h')"
-              },
-              include_analysis: {
-                type: "boolean",
-                description: "Whether to include impact analysis for each news item (default: true)"
-              }
-            }
-          }
-        }
-      ];
-      
-      return { tools };
+      return { tools: TOOL_DEFINITIONS };
     });
     
     // Handle tool execution
@@ -120,20 +52,7 @@ class FinancialIntelligenceServer {
       try {
         secureLogger.info(`Executing tool: ${name}`, { args });
         
-        let result: ToolResponse;
-        
-        switch (name) {
-          case "multi_analyst_consensus":
-            result = await multiAnalystConsensus(args);
-            break;
-            
-          case "fetch_breaking_news":
-            result = await fetchBreakingNews(args);
-            break;
-            
-          default:
-            throw new Error(`Unknown tool: ${name}`);
-        }
+        const result: ToolResponse = await UniversalToolExecutor.execute(name, args);
         
         const duration = Date.now() - startTime;
         secureLogger.toolExecution(name, args, duration, true);

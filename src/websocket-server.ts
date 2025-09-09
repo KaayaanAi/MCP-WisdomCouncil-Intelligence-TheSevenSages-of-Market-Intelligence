@@ -4,17 +4,18 @@ import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { 
   CallToolRequestSchema, 
   ListToolsRequestSchema,
-  Tool,
   JSONRPCMessage
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { config, configForLogging } from "./config.js";
 import { secureLogger } from "./utils/logger.js";
 import { ToolResponse } from "./types/index.js";
+import { StandardErrorHandler } from "./utils/error-handler.js";
+import { SERVER_CONSTANTS } from "./constants/server-constants.js";
 
-// Import tools
-import { multiAnalystConsensus } from "./tools/multi-analyst-consensus.js";
-import { fetchBreakingNews } from "./tools/fetch-breaking-news.js";
+// Import shared definitions
+import { TOOL_DEFINITIONS } from "./shared/tool-definitions.js";
+import { UniversalToolExecutor } from "./shared/tool-executor.js";
 
 /**
  * Custom WebSocket Transport implementation for MCP Server
@@ -35,7 +36,7 @@ class WebSocketMcpTransport implements Transport {
         const message = JSON.parse(data.toString()) as JSONRPCMessage;
         this.onmessage?.(message);
       } catch (error) {
-        this.onerror?.(new Error(`Invalid JSON message: ${error instanceof Error ? error.message : String(error)}`));
+        this.onerror?.(new Error(`Invalid JSON message: ${StandardErrorHandler.getErrorMessage(error)}`));
       }
     });
 
@@ -165,8 +166,8 @@ export class FinancialIntelligenceWebSocketServer {
   private createMcpServerInstance(): Server {
     const server = new Server(
       {
-        name: "mcp-nextgen-financial-intelligence",
-        version: "2.0.2"
+        name: SERVER_CONSTANTS.NAME,
+        version: SERVER_CONSTANTS.VERSION
       },
       {
         capabilities: {
@@ -177,74 +178,7 @@ export class FinancialIntelligenceWebSocketServer {
     
     // List available tools
     server.setRequestHandler(ListToolsRequestSchema, async () => {
-      const tools: Tool[] = [
-        {
-          name: "multi_analyst_consensus",
-          description: "🧠 Get comprehensive market analysis from 7 specialized AI analysts with consensus mechanism. Provides unified insights on market events, news, or conditions.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              news_item: {
-                type: "string",
-                description: "The news item, market event, or condition to analyze"
-              },
-              analysis_depth: {
-                type: "string",
-                enum: ["quick", "standard", "deep"],
-                description: "Depth of analysis: 'quick' (30s), 'standard' (60s), 'deep' (120s)"
-              },
-              sage_perspectives: {
-                type: "array",
-                items: {
-                  type: "string",
-                  enum: [
-                    "political_analyst",
-                    "economic_analyst", 
-                    "geopolitical_analyst",
-                    "financial_analyst",
-                    "crypto_analyst",
-                    "tech_analyst",
-                    "behavioral_analyst"
-                  ]
-                },
-                description: "Optional: Specify which analysts to include (default: all 7)"
-              }
-            },
-            required: ["news_item"]
-          }
-        },
-        {
-          name: "fetch_breaking_news",
-          description: "📰 Fetch and analyze breaking financial news from multiple RSS feeds and APIs. Provides prioritized, relevant market news with impact assessment.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              category: {
-                type: "string",
-                enum: ["all", "stocks", "crypto", "forex", "commodities", "politics", "economics"],
-                description: "News category to fetch (default: 'all')"
-              },
-              max_items: {
-                type: "number",
-                minimum: 1,
-                maximum: 50,
-                description: "Maximum number of news items to return (default: 10)"
-              },
-              time_range: {
-                type: "string",
-                enum: ["1h", "6h", "12h", "24h"],
-                description: "Time range for news items (default: '6h')"
-              },
-              include_analysis: {
-                type: "boolean",
-                description: "Whether to include impact analysis for each news item (default: true)"
-              }
-            }
-          }
-        }
-      ];
-      
-      return { tools };
+      return { tools: TOOL_DEFINITIONS };
     });
     
     // Handle tool execution
@@ -255,20 +189,7 @@ export class FinancialIntelligenceWebSocketServer {
       try {
         secureLogger.info(`WebSocket MCP executing tool: ${name}`, { args });
         
-        let result: ToolResponse;
-        
-        switch (name) {
-          case "multi_analyst_consensus":
-            result = await multiAnalystConsensus(args);
-            break;
-            
-          case "fetch_breaking_news":
-            result = await fetchBreakingNews(args);
-            break;
-            
-          default:
-            throw new Error(`Unknown tool: ${name}`);
-        }
+        const result: ToolResponse = await UniversalToolExecutor.execute(name, args);
         
         const duration = Date.now() - startTime;
         secureLogger.toolExecution(name, args, duration, true);
@@ -282,13 +203,13 @@ export class FinancialIntelligenceWebSocketServer {
         const duration = Date.now() - startTime;
         secureLogger.toolExecution(name, args, duration, false);
         secureLogger.error(`WebSocket MCP tool execution error: ${name}`, { 
-          error: error instanceof Error ? error.message : String(error) 
+          error: StandardErrorHandler.getErrorMessage(error) 
         });
         
         return {
           content: [{ 
             type: "text", 
-            text: `❌ **Error executing ${name}**: ${error instanceof Error ? error.message : String(error)}` 
+            text: `❌ **Error executing ${name}**: ${StandardErrorHandler.getErrorMessage(error)}` 
           }],
           isError: true
         };
